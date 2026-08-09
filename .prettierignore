@@ -1,0 +1,6 @@
+bun.lock
+out
+release
+coverage
+output
+*.tsbuildinfo
