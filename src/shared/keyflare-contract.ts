@@ -1,0 +1,145 @@
+import { z } from "zod";
+
+export const channelIds = [
+  "backlight",
+  "num_lock",
+  "caps_lock",
+  "scroll_lock",
+  "compose",
+  "kana",
+] as const;
+
+export const channelIdSchema = z.enum(channelIds);
+export type ChannelId = z.infer<typeof channelIdSchema>;
+
+export interface DeclaredChannel {
+  id: ChannelId;
+  kind: "backlight" | "indicator";
+  label: string;
+}
+
+export interface KeyboardKey {
+  row: number;
+  column: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label: string;
+}
+
+export interface KeyboardLayout {
+  name: string;
+  keys: KeyboardKey[];
+}
+
+export interface TargetCapabilities {
+  target: string;
+  keyboardName: string;
+  channels: DeclaredChannel[];
+  layouts: KeyboardLayout[];
+}
+
+const pinSchema = z.string().min(1);
+const layoutKeySchema = z
+  .object({
+    matrix: z.tuple([
+      z.number().int().nonnegative(),
+      z.number().int().nonnegative(),
+    ]),
+    x: z.number(),
+    y: z.number(),
+    w: z.number().positive().optional(),
+    h: z.number().positive().optional(),
+    label: z.string().optional(),
+  })
+  .passthrough();
+
+const qmkInfoSchema = z
+  .object({
+    keyboard_name: z.string().min(1).optional(),
+    features: z.record(z.string(), z.boolean()).optional(),
+    backlight: z
+      .object({
+        pin: pinSchema.optional(),
+        pins: z.array(pinSchema).min(1).optional(),
+      })
+      .passthrough()
+      .optional(),
+    indicators: z
+      .object({
+        num_lock: pinSchema.optional(),
+        caps_lock: pinSchema.optional(),
+        scroll_lock: pinSchema.optional(),
+        compose: pinSchema.optional(),
+        kana: pinSchema.optional(),
+      })
+      .passthrough()
+      .optional(),
+    layouts: z.record(
+      z.string(),
+      z
+        .object({
+          layout: z.array(layoutKeySchema).min(1),
+        })
+        .passthrough(),
+    ),
+  })
+  .passthrough();
+
+const indicatorDefinitions = [
+  ["num_lock", "Num Lock indicator"],
+  ["caps_lock", "Caps Lock indicator"],
+  ["scroll_lock", "Scroll Lock indicator"],
+  ["compose", "Compose indicator"],
+  ["kana", "Kana indicator"],
+] as const satisfies ReadonlyArray<
+  readonly [Exclude<ChannelId, "backlight">, string]
+>;
+
+export function normalizeQmkInfo({
+  target,
+  info,
+}: {
+  target: string;
+  info: unknown;
+}): TargetCapabilities {
+  const parsed = qmkInfoSchema.safeParse(info);
+  if (!parsed.success) {
+    throw new Error(
+      `Invalid QMK keyboard metadata: ${z.prettifyError(parsed.error)}`,
+    );
+  }
+
+  const channels: DeclaredChannel[] = [];
+  const hasBacklightPin = Boolean(
+    parsed.data.backlight?.pin ?? parsed.data.backlight?.pins?.length,
+  );
+  if (parsed.data.features?.backlight === true && hasBacklightPin) {
+    channels.push({ id: "backlight", kind: "backlight", label: "Backlight" });
+  }
+
+  for (const [id, label] of indicatorDefinitions) {
+    if (parsed.data.indicators?.[id]) {
+      channels.push({ id, kind: "indicator", label });
+    }
+  }
+
+  return {
+    target,
+    keyboardName: parsed.data.keyboard_name ?? target,
+    channels,
+    layouts: Object.entries(parsed.data.layouts).map(([name, layout]) => ({
+      name,
+      keys: layout.layout.map((key) => ({
+        row: key.matrix[0],
+        column: key.matrix[1],
+        x: key.x,
+        y: key.y,
+        width: key.w ?? 1,
+        height: key.h ?? 1,
+        label: key.label ?? "",
+      })),
+    })),
+  };
+}
