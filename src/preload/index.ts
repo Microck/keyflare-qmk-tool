@@ -11,6 +11,23 @@ const keyflare: KeyflareApi = {
     ipcRenderer.invoke(ipcChannels.inspectTarget, target),
   selectKeymap: () => ipcRenderer.invoke(ipcChannels.selectKeymap),
   buildAndSave: (input) => ipcRenderer.invoke(ipcChannels.buildAndSave, input),
+  isWindowMaximized: () => ipcRenderer.invoke(ipcChannels.isWindowMaximized),
+  onWindowMaximizedChange: (listener) => {
+    const handleChange = (
+      _event: Electron.IpcRendererEvent,
+      maximized: boolean,
+    ) => listener(maximized);
+    ipcRenderer.on(ipcChannels.windowMaximizedChanged, handleChange);
+    return () =>
+      ipcRenderer.removeListener(
+        ipcChannels.windowMaximizedChanged,
+        handleChange,
+      );
+  },
+  minimizeWindow: () => ipcRenderer.invoke(ipcChannels.minimizeWindow),
+  toggleMaximizeWindow: () =>
+    ipcRenderer.invoke(ipcChannels.toggleMaximizeWindow),
+  closeWindow: () => ipcRenderer.invoke(ipcChannels.closeWindow),
 };
 
 contextBridge.exposeInMainWorld("keyflare", keyflare);

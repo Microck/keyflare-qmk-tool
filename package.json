@@ -1,6 +1,6 @@
 {
   "name": "keyflare",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Build simple reactive-lighting firmware for supported QMK keyboards.",
   "type": "module",
   "main": "./out/main/index.js",
@@ -54,6 +54,7 @@
       "out/**/*",
       "package.json"
     ],
+    "icon": "build/icon.png",
     "extraResources": [
       {
         "from": "resources/qmk-module",
@@ -61,6 +62,7 @@
       }
     ],
     "mac": {
+      "icon": "build/icon.png",
       "identity": null,
       "target": [
         {
@@ -81,6 +83,7 @@
       "category": "public.app-category.utilities"
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -100,6 +103,7 @@
       "artifactName": "${productName} Portable ${version}.${ext}"
     },
     "linux": {
+      "icon": "build/icon.png",
       "target": [
         {
           "target": "AppImage",

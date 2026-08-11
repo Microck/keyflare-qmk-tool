@@ -40,6 +40,9 @@ const scrollLockOnlyTarget: TargetCapabilities = {
 
 class InMemoryKeyflareApi implements KeyflareApi {
   readonly builds: BuildAndSaveInput[] = [];
+  readonly windowCalls: string[] = [];
+  private maximized = false;
+  private readonly maximizeListeners = new Set<(maximized: boolean) => void>();
 
   constructor(
     private environment: EnvironmentStatus,
@@ -76,9 +79,52 @@ class InMemoryKeyflareApi implements KeyflareApi {
       savedPath: "/firmware/test_scroll_pad_default.hex",
     };
   }
+
+  async isWindowMaximized(): Promise<boolean> {
+    return this.maximized;
+  }
+
+  onWindowMaximizedChange(listener: (maximized: boolean) => void): () => void {
+    this.maximizeListeners.add(listener);
+    return () => this.maximizeListeners.delete(listener);
+  }
+
+  async minimizeWindow(): Promise<void> {
+    this.windowCalls.push("minimize");
+  }
+
+  async toggleMaximizeWindow(): Promise<void> {
+    this.windowCalls.push("toggle-maximize");
+    this.maximized = !this.maximized;
+    this.maximizeListeners.forEach((listener) => listener(this.maximized));
+  }
+
+  async closeWindow(): Promise<void> {
+    this.windowCalls.push("close");
+  }
 }
 
 describe("Keyflare", () => {
+  it("controls the window and labels the current maximize action", async () => {
+    const api = new InMemoryKeyflareApi(readyEnvironment);
+    const user = userEvent.setup();
+    render(<App api={api} />);
+
+    await screen.findByLabelText("Keyboard target");
+    await user.click(screen.getByRole("button", { name: "Minimize" }));
+    await user.click(screen.getByRole("button", { name: "Maximize" }));
+    expect(screen.getByRole("button", { name: "Restore" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Restore" }));
+    await user.click(screen.getByRole("button", { name: "Close" }));
+
+    expect(api.windowCalls).toEqual([
+      "minimize",
+      "toggle-maximize",
+      "toggle-maximize",
+      "close",
+    ]);
+  });
+
   it("explains how to recover when the QMK toolchain is missing", async () => {
     const api = new InMemoryKeyflareApi({
       ...readyEnvironment,

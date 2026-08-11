@@ -7,4 +7,9 @@ export const ipcChannels = {
   inspectTarget: "keyflare:inspect-target",
   selectKeymap: "keyflare:select-keymap",
   buildAndSave: "keyflare:build-and-save",
+  isWindowMaximized: "keyflare:is-window-maximized",
+  windowMaximizedChanged: "keyflare:window-maximized-changed",
+  minimizeWindow: "keyflare:minimize-window",
+  toggleMaximizeWindow: "keyflare:toggle-maximize-window",
+  closeWindow: "keyflare:close-window",
 } as const;
