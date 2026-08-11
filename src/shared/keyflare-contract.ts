@@ -26,6 +26,7 @@ export interface KeyboardKey {
   width: number;
   height: number;
   label: string;
+  keycode?: string;
 }
 
 export interface KeyboardLayout {
@@ -76,6 +77,7 @@ const qmkInfoSchema = z
       })
       .passthrough()
       .optional(),
+    layout_aliases: z.record(z.string(), z.string()).optional(),
     layouts: z.record(
       z.string(),
       z
@@ -84,6 +86,13 @@ const qmkInfoSchema = z
         })
         .passthrough(),
     ),
+  })
+  .passthrough();
+
+const qmkKeymapSchema = z
+  .object({
+    layout: z.string().min(1),
+    layers: z.array(z.array(z.string())).min(1),
   })
   .passthrough();
 
@@ -100,9 +109,11 @@ const indicatorDefinitions = [
 export function normalizeQmkInfo({
   target,
   info,
+  keymap,
 }: {
   target: string;
   info: unknown;
+  keymap?: unknown;
 }): TargetCapabilities {
   const parsed = qmkInfoSchema.safeParse(info);
   if (!parsed.success) {
@@ -110,6 +121,14 @@ export function normalizeQmkInfo({
       `Invalid QMK keyboard metadata: ${z.prettifyError(parsed.error)}`,
     );
   }
+  const parsedKeymapResult =
+    keymap === undefined ? null : qmkKeymapSchema.safeParse(keymap);
+  if (parsedKeymapResult && !parsedKeymapResult.success) {
+    throw new Error(
+      `Invalid QMK keymap: ${z.prettifyError(parsedKeymapResult.error)}`,
+    );
+  }
+  const parsedKeymap = parsedKeymapResult?.data ?? null;
 
   const channels: DeclaredChannel[] = [];
   const hasBacklightPin = Boolean(
@@ -129,17 +148,26 @@ export function normalizeQmkInfo({
     target,
     keyboardName: parsed.data.keyboard_name ?? target,
     channels,
-    layouts: Object.entries(parsed.data.layouts).map(([name, layout]) => ({
-      name,
-      keys: layout.layout.map((key) => ({
-        row: key.matrix[0],
-        column: key.matrix[1],
-        x: key.x,
-        y: key.y,
-        width: key.w ?? 1,
-        height: key.h ?? 1,
-        label: key.label ?? "",
-      })),
-    })),
+    layouts: Object.entries(parsed.data.layouts).map(([name, layout]) => {
+      const keymapLayout = parsedKeymap
+        ? (parsed.data.layout_aliases?.[parsedKeymap.layout] ??
+          parsedKeymap.layout)
+        : undefined;
+      const defaultLayer =
+        keymapLayout === name ? parsedKeymap?.layers[0] : undefined;
+      return {
+        name,
+        keys: layout.layout.map((key, index) => ({
+          row: key.matrix[0],
+          column: key.matrix[1],
+          x: key.x,
+          y: key.y,
+          width: key.w ?? 1,
+          height: key.h ?? 1,
+          label: key.label ?? "",
+          ...(defaultLayer?.[index] ? { keycode: defaultLayer[index] } : {}),
+        })),
+      };
+    }),
   };
 }

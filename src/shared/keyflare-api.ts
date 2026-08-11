@@ -14,6 +14,12 @@ export interface EnvironmentStatus {
 }
 
 export const inspectTargetInputSchema = z.string().min(1);
+export const keyboardSourceSelectionSchema = z
+  .object({
+    name: z.string().min(1),
+    targets: z.array(z.string().min(1)).min(1),
+  })
+  .strict();
 export const buildAndSaveInputSchema = z.object({
   target: z.string().min(1),
   channels: z.array(channelIdSchema).min(1),
@@ -23,6 +29,9 @@ export const buildAndSaveInputSchema = z.object({
 export type BuildAndSaveInput = z.infer<typeof buildAndSaveInputSchema>;
 
 export type KeymapSelection = { name: string };
+export type KeyboardSourceSelection = z.infer<
+  typeof keyboardSourceSelectionSchema
+>;
 
 export type SaveResult =
   { kind: "saved"; fileName: string; savedPath: string } | { kind: "canceled" };
@@ -30,7 +39,7 @@ export type SaveResult =
 export interface KeyflareApi {
   getEnvironment(): Promise<EnvironmentStatus>;
   initializeSource(): Promise<EnvironmentStatus>;
-  listTargets(): Promise<string[]>;
+  selectKeyboardSource(): Promise<KeyboardSourceSelection | null>;
   inspectTarget(target: string): Promise<TargetCapabilities>;
   selectKeymap(): Promise<KeymapSelection | null>;
   selectQmkMsysRoot(): Promise<EnvironmentStatus | null>;

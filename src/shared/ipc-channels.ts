@@ -3,7 +3,7 @@
 export const ipcChannels = {
   getEnvironment: "keyflare:get-environment",
   initializeSource: "keyflare:initialize-source",
-  listTargets: "keyflare:list-targets",
+  selectKeyboardSource: "keyflare:select-keyboard-source",
   inspectTarget: "keyflare:inspect-target",
   selectKeymap: "keyflare:select-keymap",
   selectQmkMsysRoot: "keyflare:select-qmk-msys-root",

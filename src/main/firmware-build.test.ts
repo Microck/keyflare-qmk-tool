@@ -1,4 +1,11 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -11,8 +18,8 @@ import {
   FirmwareBuildModule,
   createCommandRunner,
   findFirmwareArtifact,
-  parseKeyboardTargets,
   prepareKeymapDocument,
+  qmkFirmwareRef,
   resolveToolCommands,
   validateQmkMsysRoot,
 } from "./firmware-build";
@@ -56,7 +63,7 @@ describe("resolveToolCommands", () => {
           "--noprofile",
           "--norc",
           "-c",
-          'export PYTHONUTF8=1; export MAKE=make; exec qmk "$@"',
+          'export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; exec qmk "$@"',
           "keyflare-qmk",
         ],
         env: {
@@ -71,7 +78,7 @@ describe("resolveToolCommands", () => {
           "--noprofile",
           "--norc",
           "-c",
-          'export PYTHONUTF8=1; export MAKE=make; exec git "$@"',
+          'export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; exec git "$@"',
           "keyflare-git",
         ],
         env: {
@@ -106,7 +113,7 @@ describe("resolveToolCommands", () => {
           "--noprofile",
           "--norc",
           "-c",
-          `export PATH=${qmkMsysPath}; export QMK_DISTRIB_DIR=/opt/qmk; export PYTHONUTF8=1; export MAKE=make; exec qmk "$@"`,
+          `export PATH=${qmkMsysPath}; export QMK_DISTRIB_DIR=/opt/qmk; export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; exec qmk "$@"`,
           "keyflare-qmk",
         ],
         env: {
@@ -121,7 +128,7 @@ describe("resolveToolCommands", () => {
           "--noprofile",
           "--norc",
           "-c",
-          `export PATH=${qmkMsysPath}; export QMK_DISTRIB_DIR=/opt/qmk; export PYTHONUTF8=1; export MAKE=make; exec git "$@"`,
+          `export PATH=${qmkMsysPath}; export QMK_DISTRIB_DIR=/opt/qmk; export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; exec git "$@"`,
           "keyflare-git",
         ],
         env: {
@@ -204,14 +211,6 @@ describe("prepareKeymapDocument", () => {
   });
 });
 
-describe("parseKeyboardTargets", () => {
-  it("normalizes, sorts, and de-duplicates QMK output", () => {
-    expect(
-      parseKeyboardTargets("zeta/board\nalpha/board\nzeta/board\n\n"),
-    ).toEqual(["alpha/board", "zeta/board"]);
-  });
-});
-
 describe("FirmwareBuildModule source setup", () => {
   it("detects QMK MSYS after installation without an app restart", async () => {
     const appDataPath = await mkdtemp(join(tmpdir(), "keyflare-retry-"));
@@ -271,6 +270,23 @@ describe("FirmwareBuildModule source setup", () => {
       ],
       cwd: builder.qmkHome,
     });
+    expect(runner.requests).toContainEqual({
+      command: "git",
+      args: ["sparse-checkout", "set", "--no-cone", "/*", "!/keyboards/"],
+      cwd: builder.qmkHome,
+    });
+    expect(runner.requests).toContainEqual({
+      command: "git",
+      args: [
+        "fetch",
+        "--depth",
+        "1",
+        "--filter=blob:none",
+        "origin",
+        qmkFirmwareRef,
+      ],
+      cwd: builder.qmkHome,
+    });
     expect(runner.requests.at(-1)).toMatchObject({
       command: "qmk",
       args: ["git-submodule", "--sync"],
@@ -279,18 +295,215 @@ describe("FirmwareBuildModule source setup", () => {
   });
 });
 
-describe("FirmwareBuildModule target inspection", () => {
-  it("reuses the last target metadata instead of running QMK twice", async () => {
-    const runner = new CapabilityCommandRunner();
+describe("FirmwareBuildModule keyboard source import", () => {
+  it("imports one keyboard family and returns only its declared targets", async () => {
+    const root = await mkdtemp(join(tmpdir(), "keyflare-import-"));
+    temporaryDirectories.push(root);
+    const source = join(root, "my-board");
+    await mkdir(join(source, "revisions", "v2"), { recursive: true });
+    await mkdir(join(source, "keymaps", "default"), { recursive: true });
+    await Promise.all([
+      writeFile(join(source, "keyboard.json"), "{}"),
+      writeFile(join(source, "revisions", "v2", "keyboard.json"), "{}"),
+      writeFile(join(source, "keymaps", "default", "keyboard.json"), "{}"),
+    ]);
     const builder = new FirmwareBuildModule({
-      appDataPath: "/app-data",
+      appDataPath: root,
+      moduleSourcePath: "/unused-in-this-test",
+      commandRunner: new RecordingCommandRunner(),
+    });
+
+    await expect(builder.importKeyboardSource(source)).resolves.toEqual({
+      name: "my-board",
+      targets: [
+        "keyflare_imported/my-board",
+        "keyflare_imported/my-board/revisions/v2",
+      ],
+    });
+    await expect(
+      readFile(
+        join(
+          builder.qmkHome,
+          "keyboards",
+          "keyflare_imported",
+          "my-board",
+          "keyboard.json",
+        ),
+        "utf8",
+      ),
+    ).resolves.toBe("{}");
+  });
+
+  it("rejects a folder without a QMK keyboard definition", async () => {
+    const root = await mkdtemp(join(tmpdir(), "keyflare-import-invalid-"));
+    temporaryDirectories.push(root);
+    const source = join(root, "not-a-keyboard");
+    await mkdir(source);
+    const builder = new FirmwareBuildModule({
+      appDataPath: root,
+      moduleSourcePath: "/unused-in-this-test",
+      commandRunner: new RecordingCommandRunner(),
+    });
+
+    await expect(builder.importKeyboardSource(source)).rejects.toThrow(
+      "Choose a QMK keyboard source folder that contains keyboard.json",
+    );
+  });
+
+  it("rejects source folders that contain the managed import directory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "keyflare-import-ancestor-"));
+    temporaryDirectories.push(root);
+    const builder = new FirmwareBuildModule({
+      appDataPath: root,
+      moduleSourcePath: "/unused-in-this-test",
+      commandRunner: new RecordingCommandRunner(),
+    });
+
+    await expect(builder.importKeyboardSource(builder.qmkHome)).rejects.toThrow(
+      "Choose the original QMK keyboard source folder",
+    );
+  });
+
+  it("rejects keyboard source folders that contain symlinks", async () => {
+    const root = await mkdtemp(join(tmpdir(), "keyflare-import-symlink-"));
+    temporaryDirectories.push(root);
+    const source = join(root, "board");
+    const linkedDirectory = join(root, "linked");
+    await Promise.all([mkdir(source), mkdir(linkedDirectory)]);
+    await writeFile(join(source, "keyboard.json"), "{}");
+    await symlink(
+      linkedDirectory,
+      join(source, "linked"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    const builder = new FirmwareBuildModule({
+      appDataPath: root,
+      moduleSourcePath: "/unused-in-this-test",
+      commandRunner: new RecordingCommandRunner(),
+    });
+
+    await expect(builder.importKeyboardSource(source)).rejects.toThrow(
+      "QMK keyboard source folders cannot contain symlinks",
+    );
+  });
+
+  it("keeps the current imported source when the replacement copy fails", async () => {
+    const root = await mkdtemp(join(tmpdir(), "keyflare-import-failure-"));
+    temporaryDirectories.push(root);
+    const source = join(root, "replacement");
+    await mkdir(source);
+    await writeFile(join(source, "keyboard.json"), "{}");
+    const currentDefinition = join(
+      root,
+      "qmk_firmware",
+      "keyboards",
+      "keyflare_imported",
+      "current",
+      "keyboard.json",
+    );
+    await mkdir(join(currentDefinition, ".."), { recursive: true });
+    await writeFile(currentDefinition, '{"keyboard_name":"Current"}');
+    const builder = new FirmwareBuildModule({
+      appDataPath: root,
+      moduleSourcePath: "/unused-in-this-test",
+      commandRunner: new RecordingCommandRunner(),
+      copyDirectory: async () => {
+        throw new Error("copy failed");
+      },
+    });
+
+    await expect(builder.importKeyboardSource(source)).rejects.toThrow(
+      "copy failed",
+    );
+    await expect(readFile(currentDefinition, "utf8")).resolves.toBe(
+      '{"keyboard_name":"Current"}',
+    );
+  });
+
+  it("accepts a committed replacement when old-backup cleanup fails", async () => {
+    const root = await mkdtemp(join(tmpdir(), "keyflare-import-cleanup-"));
+    temporaryDirectories.push(root);
+    const source = join(root, "replacement");
+    await mkdir(source);
+    await writeFile(join(source, "keyboard.json"), '{"keyboard_name":"New"}');
+    const importedRoot = join(
+      root,
+      "qmk_firmware",
+      "keyboards",
+      "keyflare_imported",
+    );
+    await mkdir(join(importedRoot, "current"), { recursive: true });
+    await writeFile(join(importedRoot, "current", "keyboard.json"), "{}");
+    const builder = new FirmwareBuildModule({
+      appDataPath: root,
+      moduleSourcePath: "/unused-in-this-test",
+      commandRunner: new RecordingCommandRunner(),
+      removeDirectory: async () => {
+        throw new Error("cleanup failed");
+      },
+    });
+
+    await expect(builder.importKeyboardSource(source)).resolves.toMatchObject({
+      name: "replacement",
+    });
+    await expect(
+      readFile(join(importedRoot, "replacement", "keyboard.json"), "utf8"),
+    ).resolves.toBe('{"keyboard_name":"New"}');
+  });
+});
+
+describe("FirmwareBuildModule target inspection", () => {
+  it("loads keyboard metadata when no default keymap exists", async () => {
+    const appDataPath = await mkdtemp(join(tmpdir(), "keyflare-no-default-"));
+    temporaryDirectories.push(appDataPath);
+    const runner = new MissingDefaultCommandRunner();
+    const builder = new FirmwareBuildModule({
+      appDataPath,
       moduleSourcePath: "/module-source",
       commandRunner: runner,
     });
 
+    const inspected = await builder.inspectTarget("test/board");
+    expect(inspected).toMatchObject({
+      target: "test/board",
+      keyboardName: "Test board",
+      layouts: [{ keys: [{ row: 0, column: 0 }] }],
+    });
+    expect(inspected.layouts[0]?.keys[0]?.keycode).toBeUndefined();
+  });
+
+  it("reads JSON defaults directly and reuses the last target metadata", async () => {
+    const appDataPath = await mkdtemp(join(tmpdir(), "keyflare-inspect-"));
+    temporaryDirectories.push(appDataPath);
+    const runner = new CapabilityCommandRunner();
+    const builder = new FirmwareBuildModule({
+      appDataPath,
+      moduleSourcePath: "/module-source",
+      commandRunner: runner,
+    });
+    const defaultKeymapDirectory = join(
+      builder.qmkHome,
+      "keyboards",
+      "test",
+      "board",
+      "keymaps",
+      "default",
+    );
+    await mkdir(defaultKeymapDirectory, { recursive: true });
+    await writeFile(
+      join(defaultKeymapDirectory, "keymap.json"),
+      JSON.stringify({
+        keyboard: "original/vendor-board",
+        keymap: "default",
+        layout: "LAYOUT",
+        layers: [["KC_SCRL"]],
+      }),
+    );
+
     await expect(builder.inspectTarget("test/board")).resolves.toMatchObject({
       target: "test/board",
       keyboardName: "Test board",
+      layouts: [{ keys: [{ keycode: "KC_SCRL" }] }],
     });
     await expect(builder.inspectTarget("test/board")).resolves.toMatchObject({
       target: "test/board",
@@ -298,6 +511,37 @@ describe("FirmwareBuildModule target inspection", () => {
 
     expect(
       runner.requests.filter(({ args }) => args[0] === "info"),
+    ).toHaveLength(1);
+    expect(
+      runner.requests.filter(({ args }) => args[0] === "c2json"),
+    ).toHaveLength(0);
+  });
+
+  it("uses QMK to convert a C default keymap", async () => {
+    const appDataPath = await mkdtemp(join(tmpdir(), "keyflare-inspect-c-"));
+    temporaryDirectories.push(appDataPath);
+    const runner = new CapabilityCommandRunner();
+    const builder = new FirmwareBuildModule({
+      appDataPath,
+      moduleSourcePath: "/module-source",
+      commandRunner: runner,
+    });
+    const defaultKeymapDirectory = join(
+      builder.qmkHome,
+      "keyboards",
+      "test",
+      "board",
+      "keymaps",
+      "default",
+    );
+    await mkdir(defaultKeymapDirectory, { recursive: true });
+    await writeFile(join(defaultKeymapDirectory, "keymap.c"), "");
+
+    await expect(builder.inspectTarget("test/board")).resolves.toMatchObject({
+      layouts: [{ keys: [{ keycode: "KC_SCRL" }] }],
+    });
+    expect(
+      runner.requests.filter(({ args }) => args[0] === "c2json"),
     ).toHaveLength(1);
   });
 });
@@ -403,6 +647,90 @@ describe("FirmwareBuildModule builds", () => {
       `QMK_USERSPACE=${compile?.env?.QMK_USERSPACE ?? "missing"}`,
     );
   });
+
+  it("retargets an imported JSON default keymap before compiling", async () => {
+    const root = await mkdtemp(join(tmpdir(), "keyflare-build-default-"));
+    temporaryDirectories.push(root);
+    const moduleSourcePath = join(root, "module-source");
+    await mkdir(moduleSourcePath);
+    await Promise.all([
+      writeFile(join(moduleSourcePath, "qmk_module.json"), "{}"),
+      writeFile(join(moduleSourcePath, "reactive.c"), ""),
+    ]);
+    const runner = new IsolatedBuildCommandRunner();
+    const builder = new FirmwareBuildModule({
+      appDataPath: root,
+      moduleSourcePath,
+      commandRunner: runner,
+    });
+    const defaultKeymapDirectory = join(
+      builder.qmkHome,
+      "keyboards",
+      "test",
+      "board",
+      "keymaps",
+      "default",
+    );
+    await mkdir(defaultKeymapDirectory, { recursive: true });
+    await writeFile(
+      join(defaultKeymapDirectory, "keymap.json"),
+      JSON.stringify({
+        keyboard: "original/vendor-board",
+        keymap: "default",
+        layout: "LAYOUT",
+        layers: [["KC_SCRL"]],
+      }),
+    );
+
+    await expect(
+      builder.build({
+        target: "test/board",
+        channels: ["scroll_lock"],
+        keymap: { kind: "default" },
+      }),
+    ).resolves.toMatchObject({ artifactName: "test_board_default.hex" });
+    expect(runner.compiledKeymaps[0]).toMatchObject({
+      keyboard: "test/board",
+    });
+  });
+
+  it("retargets an imported keymap file before compiling", async () => {
+    const root = await mkdtemp(join(tmpdir(), "keyflare-build-imported-"));
+    temporaryDirectories.push(root);
+    const moduleSourcePath = join(root, "module-source");
+    const keymapPath = join(root, "keymap.json");
+    await mkdir(moduleSourcePath);
+    await Promise.all([
+      writeFile(join(moduleSourcePath, "qmk_module.json"), "{}"),
+      writeFile(join(moduleSourcePath, "reactive.c"), ""),
+      writeFile(
+        keymapPath,
+        JSON.stringify({
+          keyboard: "vendor/board",
+          keymap: "personal",
+          layout: "LAYOUT",
+          layers: [["KC_SCRL"]],
+        }),
+      ),
+    ]);
+    const runner = new IsolatedBuildCommandRunner();
+    const builder = new FirmwareBuildModule({
+      appDataPath: root,
+      moduleSourcePath,
+      commandRunner: runner,
+    });
+
+    await builder.build({
+      target: "keyflare_imported/board",
+      channels: ["scroll_lock"],
+      keymap: { kind: "file", path: keymapPath },
+    });
+
+    expect(runner.compiledKeymaps[0]).toMatchObject({
+      keyboard: "keyflare_imported/board",
+      keymap: expect.stringMatching(/^keyflare_/u),
+    });
+  });
 });
 
 class RecordingCommandRunner implements CommandRunner {
@@ -419,6 +747,17 @@ class CapabilityCommandRunner implements CommandRunner {
 
   async run(request: CommandRequest): Promise<CommandResult> {
     this.requests.push(request);
+    if (request.args[0] === "c2json") {
+      return {
+        stdout: JSON.stringify({
+          keyboard: "test/board",
+          keymap: "default",
+          layout: "LAYOUT",
+          layers: [["KC_SCRL"]],
+        }),
+        stderr: "",
+      };
+    }
     return {
       stdout: JSON.stringify({
         keyboard_name: "Test board",
@@ -433,7 +772,17 @@ class CapabilityCommandRunner implements CommandRunner {
   }
 }
 
+class MissingDefaultCommandRunner extends CapabilityCommandRunner {
+  override async run(request: CommandRequest): Promise<CommandResult> {
+    if (request.args[0] === "c2json") {
+      throw new Error("default keymap not found");
+    }
+    return super.run(request);
+  }
+}
+
 class IsolatedBuildCommandRunner implements CommandRunner {
+  readonly compiledKeymaps: Array<Record<string, unknown>> = [];
   readonly requests: CommandRequest[] = [];
 
   async run(request: CommandRequest): Promise<CommandResult> {
@@ -452,14 +801,26 @@ class IsolatedBuildCommandRunner implements CommandRunner {
         stderr: "",
       };
     }
+    if (request.args[0] === "c2json") {
+      return {
+        stdout: JSON.stringify({
+          keyboard: "test/board",
+          keymap: "default",
+          layout: "LAYOUT",
+          layers: [["KC_SCRL"]],
+        }),
+        stderr: "",
+      };
+    }
     if (request.args[0] === "compile") {
       const userspace = request.env?.QMK_USERSPACE;
       if (!userspace) {
         throw new Error("compile did not receive QMK_USERSPACE");
       }
-      const keymap = JSON.parse(await readFile(request.args[1]!, "utf8")) as {
-        keymap: string;
-      };
+      const keymap = JSON.parse(
+        await readFile(request.args[1]!, "utf8"),
+      ) as Record<string, unknown> & { keymap: string };
+      this.compiledKeymaps.push(keymap);
       await writeFile(
         join(userspace, `test_board_${keymap.keymap}.hex`),
         "firmware",

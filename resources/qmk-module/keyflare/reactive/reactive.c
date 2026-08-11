@@ -11,9 +11,11 @@ ASSERT_COMMUNITY_MODULES_MIN_API_VERSION(1, 0, 0);
 
 static uint16_t keyflare_held_key_count;
 
+#if defined(KEYFLARE_REACTIVE_NUM_LOCK) || defined(KEYFLARE_REACTIVE_CAPS_LOCK) || defined(KEYFLARE_REACTIVE_SCROLL_LOCK) || defined(KEYFLARE_REACTIVE_COMPOSE) || defined(KEYFLARE_REACTIVE_KANA)
 static void keyflare_write_indicator(pin_t pin, bool enabled) {
     gpio_write_pin(pin, enabled ? LED_PIN_ON_STATE : !LED_PIN_ON_STATE);
 }
+#endif
 
 static void keyflare_apply_reactive_state(bool active) {
 #ifdef KEYFLARE_REACTIVE_BACKLIGHT

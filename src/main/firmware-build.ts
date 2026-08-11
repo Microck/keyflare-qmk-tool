@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import {
   cp,
@@ -6,11 +7,12 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  rename,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
-import { basename, join, win32 } from "node:path";
+import { basename, join, relative, resolve, sep, win32 } from "node:path";
 
 import { z } from "zod";
 
@@ -20,12 +22,16 @@ import {
   type ChannelId,
   type TargetCapabilities,
 } from "../shared/keyflare-contract";
-import type { EnvironmentStatus } from "../shared/keyflare-api";
+import type {
+  EnvironmentStatus,
+  KeyboardSourceSelection,
+} from "../shared/keyflare-api";
 import { renderReactiveModuleConfig } from "./reactive-module";
 
 export const qmkFirmwareRef = "9caa5f871ddb9813c7370708be62d7a3e1cfeb75";
 const qmkFirmwareUrl = "https://github.com/qmk/qmk_firmware.git";
 const keyflareModuleName = "keyflare/reactive";
+const importedKeyboardNamespace = "keyflare_imported";
 const firmwareExtensions = new Set(["bin", "hex", "uf2"]);
 
 const keymapSchema = z
@@ -94,6 +100,8 @@ export interface FirmwareBuildModuleOptions {
   qmkMsysRoot?: string;
   qmkCommand?: string;
   toolCommandResolver?: (qmkMsysRoot: string | undefined) => ToolCommands;
+  copyDirectory?: typeof cp;
+  removeDirectory?: typeof rm;
 }
 
 export function resolveToolCommands({
@@ -245,7 +253,7 @@ function qmkMsysToolCommands({
     "--noprofile",
     "--norc",
     "-c",
-    `${setup}export PYTHONUTF8=1; export MAKE=make; exec ${tool} "$@"`,
+    `${setup}export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; exec ${tool} "$@"`,
     processName,
   ];
   const bashPath = qmkMsysBashPath(root);
@@ -312,6 +320,8 @@ export class FirmwareBuildModule {
   readonly qmkHome: string;
 
   private readonly commandRunner: CommandRunner;
+  private readonly copyDirectory: typeof cp;
+  private readonly removeDirectory: typeof rm;
   private readonly moduleSourcePath: string;
   private readonly platform: NodeJS.Platform;
   private readonly toolCommandOverrides: Partial<ToolCommands>;
@@ -327,6 +337,8 @@ export class FirmwareBuildModule {
     appDataPath,
     moduleSourcePath,
     commandRunner = createCommandRunner(),
+    copyDirectory = cp,
+    removeDirectory = rm,
     gitCommand,
     platform = process.platform,
     qmkMsysRoot,
@@ -339,6 +351,8 @@ export class FirmwareBuildModule {
     // community modules as firmware-owned paths and cannot resolve them.
     this.workRoot = join(appDataPath, "keyflare-work");
     this.commandRunner = commandRunner;
+    this.copyDirectory = copyDirectory;
+    this.removeDirectory = removeDirectory;
     this.moduleSourcePath = moduleSourcePath;
     this.platform = platform;
     if (qmkMsysRoot) {
@@ -498,8 +512,21 @@ export class FirmwareBuildModule {
       });
     }
 
+    // The managed checkout supplies QMK's compiler core, not its keyboard
+    // catalog. The user's selected source is the only keyboard copied here.
     await this.runTool("git", {
-      args: ["fetch", "--depth", "1", "origin", qmkFirmwareRef],
+      args: ["sparse-checkout", "set", "--no-cone", "/*", "!/keyboards/"],
+      cwd: this.qmkHome,
+    });
+    await this.runTool("git", {
+      args: [
+        "fetch",
+        "--depth",
+        "1",
+        "--filter=blob:none",
+        "origin",
+        qmkFirmwareRef,
+      ],
       cwd: this.qmkHome,
     });
     await this.runTool("git", {
@@ -513,12 +540,81 @@ export class FirmwareBuildModule {
     });
   }
 
-  async listTargets(): Promise<string[]> {
-    const result = await this.runTool("qmk", {
-      args: ["list-keyboards"],
-      cwd: this.qmkHome,
-    });
-    return parseKeyboardTargets(result.stdout);
+  async importKeyboardSource(
+    sourceDirectory: string,
+  ): Promise<KeyboardSourceSelection> {
+    const importedRoot = join(
+      this.qmkHome,
+      "keyboards",
+      importedKeyboardNamespace,
+    );
+    const keyboardsRoot = join(this.qmkHome, "keyboards");
+    const sourcePath = resolve(sourceDirectory);
+    const importedPath = resolve(importedRoot);
+    if (
+      sourcePath === importedPath ||
+      sourcePath.startsWith(`${importedPath}${sep}`) ||
+      importedPath.startsWith(`${sourcePath}${sep}`)
+    ) {
+      throw new Error("Choose the original QMK keyboard source folder");
+    }
+
+    const definitions = await findKeyboardDefinitions(sourcePath);
+    if (definitions.length === 0) {
+      throw new Error(
+        "Choose a QMK keyboard source folder that contains keyboard.json",
+      );
+    }
+
+    const sourceName = basename(sourcePath);
+    const sourceSlug = sanitizeKeyboardSourceName(sourceName);
+    const stagingRoot = join(keyboardsRoot, `.keyflare-import-${randomUUID()}`);
+    const backupRoot = join(
+      keyboardsRoot,
+      `.keyflare-import-backup-${randomUUID()}`,
+    );
+    await mkdir(keyboardsRoot, { recursive: true });
+    try {
+      await this.copyDirectory(sourcePath, join(stagingRoot, sourceSlug), {
+        recursive: true,
+      });
+
+      let previousSourceMoved = false;
+      try {
+        await rename(importedRoot, backupRoot);
+        previousSourceMoved = true;
+      } catch (error) {
+        if (!hasErrorCode(error, "ENOENT")) throw error;
+      }
+
+      try {
+        await rename(stagingRoot, importedRoot);
+      } catch (error) {
+        if (previousSourceMoved) await rename(backupRoot, importedRoot);
+        throw error;
+      }
+
+      // The second rename commits the replacement. From this point onward the
+      // UI and capability cache must describe the new source even if cleanup
+      // of the old backup fails.
+      this.inspectedTarget = null;
+      if (previousSourceMoved) {
+        await this.removeDirectory(backupRoot, {
+          recursive: true,
+          force: true,
+        }).catch(() => undefined);
+      }
+    } finally {
+      await rm(stagingRoot, { recursive: true, force: true });
+    }
+    return {
+      name: sourceName,
+      targets: definitions.map((definition) =>
+        [importedKeyboardNamespace, sourceSlug, definition]
+          .filter(Boolean)
+          .join("/"),
+      ),
+    };
   }
 
   async inspectTarget(target: string): Promise<TargetCapabilities> {
@@ -526,14 +622,20 @@ export class FirmwareBuildModule {
       return this.inspectedTarget;
     }
 
-    const result = await this.runTool("qmk", {
-      args: ["info", "-kb", target, "-f", "json"],
-      cwd: this.qmkHome,
-    });
+    const [info, keymap] = await Promise.all([
+      this.runTool("qmk", {
+        args: ["info", "-kb", target, "-f", "json"],
+        cwd: this.qmkHome,
+      }),
+      // A keyboard can be valid without a default keymap. In that case the
+      // layout still loads, but its logical key labels remain unavailable.
+      this.loadDefaultKeymap(target).catch(() => undefined),
+    ]);
 
     this.inspectedTarget = normalizeQmkInfo({
       target,
-      info: parseJson(result.stdout, "QMK keyboard metadata"),
+      info: parseJson(info.stdout, "QMK keyboard metadata"),
+      keymap,
     });
     return this.inspectedTarget;
   }
@@ -557,7 +659,6 @@ export class FirmwareBuildModule {
       const source = await this.loadKeymap({
         target: request.target,
         keymap: request.keymap,
-        workDirectory,
       });
       const keymap = prepareKeymapDocument({ source, target: request.target });
       await this.prepareBuildUserspace(workDirectory, request.channels);
@@ -609,22 +710,70 @@ export class FirmwareBuildModule {
   private async loadKeymap({
     target,
     keymap,
-    workDirectory,
   }: {
     target: string;
     keymap: BuildRequest["keymap"];
-    workDirectory: string;
   }): Promise<unknown> {
     if (keymap.kind === "file") {
-      return parseJson(await readFile(keymap.path, "utf8"), "QMK keymap");
+      const source = parseJson(
+        await readFile(keymap.path, "utf8"),
+        "QMK keymap",
+      );
+      return target.startsWith(`${importedKeyboardNamespace}/`)
+        ? retargetKeymapDocument(source, target, "QMK keymap")
+        : source;
     }
 
-    const outputPath = join(workDirectory, "default-keymap.json");
-    await this.runTool("qmk", {
-      args: ["c2json", "-kb", target, "-km", "default", "-o", outputPath],
+    return this.loadDefaultKeymap(target);
+  }
+
+  private async loadDefaultKeymap(target: string): Promise<unknown> {
+    const keyboardRoot = resolve(this.qmkHome, "keyboards");
+    let targetDirectory = resolve(keyboardRoot, target);
+    if (
+      targetDirectory !== keyboardRoot &&
+      !targetDirectory.startsWith(`${keyboardRoot}${sep}`)
+    ) {
+      throw new Error("Invalid QMK keyboard target path");
+    }
+
+    while (targetDirectory !== keyboardRoot) {
+      const jsonPath = join(
+        targetDirectory,
+        "keymaps",
+        "default",
+        "keymap.json",
+      );
+      if (await pathExists(jsonPath)) {
+        return retargetKeymapDocument(
+          parseJson(await readFile(jsonPath, "utf8"), "default QMK keymap"),
+          target,
+        );
+      }
+      const cPath = join(targetDirectory, "keymaps", "default", "keymap.c");
+      if (await pathExists(cPath)) {
+        const converted = await this.runTool("qmk", {
+          args: ["c2json", "-kb", target, "-km", "default"],
+          cwd: this.qmkHome,
+        });
+        return retargetKeymapDocument(
+          parseJson(converted.stdout, "default QMK keymap"),
+          target,
+        );
+      }
+      targetDirectory = resolve(targetDirectory, "..");
+    }
+
+    // This fallback lets QMK resolve a community-layout keymap outside the
+    // selected keyboard family. QMK remains the authority for that search.
+    const converted = await this.runTool("qmk", {
+      args: ["c2json", "-kb", target, "-km", "default"],
       cwd: this.qmkHome,
     });
-    return parseJson(await readFile(outputPath, "utf8"), "default QMK keymap");
+    return retargetKeymapDocument(
+      parseJson(converted.stdout, "default QMK keymap"),
+      target,
+    );
   }
 
   private async prepareBuildUserspace(
@@ -675,15 +824,18 @@ export function prepareKeymapDocument({
   };
 }
 
-export function parseKeyboardTargets(output: string): string[] {
-  return [
-    ...new Set(
-      output
-        .split(/\r?\n/u)
-        .map((line) => line.trim())
-        .filter(Boolean),
-    ),
-  ].sort((left, right) => left.localeCompare(right));
+function retargetKeymapDocument(
+  source: unknown,
+  target: string,
+  description = "default QMK keymap",
+): KeymapDocument {
+  const parsed = keymapSchema.safeParse(source);
+  if (!parsed.success) {
+    throw new Error(`Invalid ${description}: ${z.prettifyError(parsed.error)}`);
+  }
+  // Imported sources live under Keyflare's private QMK namespace. The keymap
+  // still describes the same keyboard, but QMK must build its imported target.
+  return { ...parsed.data, keyboard: target };
 }
 
 export async function findFirmwareArtifact(directory: string): Promise<string> {
@@ -737,6 +889,45 @@ function sanitizeFileNameSegment(value: string): string {
   return value.replaceAll(/[^a-zA-Z0-9_-]/gu, "_");
 }
 
+function sanitizeKeyboardSourceName(value: string): string {
+  const sanitized = value
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9_-]+/gu, "-")
+    .replaceAll(/^-+|-+$/gu, "");
+  return sanitized || "keyboard";
+}
+
+async function findKeyboardDefinitions(
+  sourceDirectory: string,
+): Promise<string[]> {
+  const source = await stat(sourceDirectory).catch(() => null);
+  if (!source?.isDirectory()) {
+    throw new Error("Choose a QMK keyboard source folder");
+  }
+
+  const definitions: string[] = [];
+  async function visit(directory: string): Promise<void> {
+    const entries = await readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) {
+        throw new Error("QMK keyboard source folders cannot contain symlinks");
+      }
+      if (entry.isFile() && entry.name === "keyboard.json") {
+        const definition = relative(sourceDirectory, directory)
+          .split(sep)
+          .filter(Boolean)
+          .join("/");
+        definitions.push(definition);
+      } else if (entry.isDirectory() && entry.name !== "keymaps") {
+        await visit(join(directory, entry.name));
+      }
+    }
+  }
+
+  await visit(sourceDirectory);
+  return definitions.sort((left, right) => left.localeCompare(right));
+}
+
 async function pathExists(path: string): Promise<boolean> {
   try {
     await stat(path);
@@ -748,4 +939,8 @@ async function pathExists(path: string): Promise<boolean> {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function hasErrorCode(error: unknown, code: string): boolean {
+  return error instanceof Error && "code" in error && error.code === code;
 }

@@ -6,7 +6,8 @@ import { ipcChannels } from "../shared/ipc-channels";
 const keyflare: KeyflareApi = {
   getEnvironment: () => ipcRenderer.invoke(ipcChannels.getEnvironment),
   initializeSource: () => ipcRenderer.invoke(ipcChannels.initializeSource),
-  listTargets: () => ipcRenderer.invoke(ipcChannels.listTargets),
+  selectKeyboardSource: () =>
+    ipcRenderer.invoke(ipcChannels.selectKeyboardSource),
   inspectTarget: (target) =>
     ipcRenderer.invoke(ipcChannels.inspectTarget, target),
   selectKeymap: () => ipcRenderer.invoke(ipcChannels.selectKeymap),

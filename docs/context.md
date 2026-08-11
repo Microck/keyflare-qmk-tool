@@ -8,6 +8,10 @@ Keyflare helps a person produce QMK firmware that adds simple, fixed-color react
 An exact keyboard and revision identified by QMK.
 _Avoid_: Device, keyboard model
 
+**Keyboard source**:
+A local QMK folder containing `keyboard.json` and the source files needed by one keyboard family. Keyflare imports this folder into its managed QMK build tree without exposing its filesystem path to the renderer.
+_Avoid_: Firmware binary, keyboard catalog
+
 **Keymap source**:
 An editable QMK keymap used as the basis for a firmware project. A compiled firmware artifact is not keymap source.
 _Avoid_: Firmware file, binary
@@ -35,3 +39,7 @@ _Avoid_: Source firmware, editable firmware
 **Physical LED placement**:
 The relationship between a declared channel and the LEDs actually installed on a specific keyboard build. Keyflare treats this as unknown unless explicit source data states it.
 _Avoid_: Detected key lighting, inferred placement
+
+**Logical key association**:
+The key in the active keymap that sends Num Lock, Caps Lock, or Scroll Lock. Keyflare can highlight this key to explain an indicator selection, but the highlight does not locate the physical LED.
+_Avoid_: Indicator LED location

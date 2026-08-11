@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildAndSaveInputSchema,
   inspectTargetInputSchema,
+  keyboardSourceSelectionSchema,
 } from "./keyflare-api";
 
 describe("Keyflare IPC inputs", () => {
@@ -32,5 +33,24 @@ describe("Keyflare IPC inputs", () => {
 
   it("rejects empty target names", () => {
     expect(() => inspectTargetInputSchema.parse("")).toThrow();
+  });
+
+  it("keeps imported keyboard paths out of the renderer contract", () => {
+    expect(
+      keyboardSourceSelectionSchema.parse({
+        name: "my-keyboard",
+        targets: ["keyflare_imported/my-keyboard"],
+      }),
+    ).toEqual({
+      name: "my-keyboard",
+      targets: ["keyflare_imported/my-keyboard"],
+    });
+    expect(() =>
+      keyboardSourceSelectionSchema.parse({
+        name: "my-keyboard",
+        path: "C:\\Users\\me\\keyboard",
+        targets: ["keyflare_imported/my-keyboard"],
+      }),
+    ).toThrow();
   });
 });
