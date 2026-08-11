@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Check,
   ChevronRight,
@@ -11,7 +11,6 @@ import {
   Minus,
   RotateCw,
   Save,
-  Search,
   SlidersHorizontal,
   X,
   Zap,
@@ -20,6 +19,7 @@ import {
 import type {
   BuildAndSaveInput,
   EnvironmentStatus,
+  KeyboardSourceSelection,
   KeyflareApi,
   SaveResult,
 } from "../shared/keyflare-api";
@@ -36,7 +36,8 @@ export function App({ api }: { api: KeyflareApi }) {
   const [environment, setEnvironment] = useState<EnvironmentStatus | null>(
     null,
   );
-  const [targets, setTargets] = useState<string[]>([]);
+  const [keyboardSource, setKeyboardSource] =
+    useState<KeyboardSourceSelection | null>(null);
   const [target, setTarget] = useState("");
   const [capabilities, setCapabilities] = useState<TargetCapabilities | null>(
     null,
@@ -47,6 +48,8 @@ export function App({ api }: { api: KeyflareApi }) {
     null,
   );
   const [layoutName, setLayoutName] = useState("");
+  const [variantMenuOpen, setVariantMenuOpen] = useState(false);
+  const variantTriggerRef = useRef<HTMLButtonElement>(null);
   const [busyAction, setBusyAction] = useState<
     "source" | "qmk-msys" | "target" | "keymap" | "build" | null
   >(null);
@@ -60,10 +63,6 @@ export function App({ api }: { api: KeyflareApi }) {
       .then(async (status) => {
         if (!active) return;
         setEnvironment(status);
-        if (status.kind === "ready") {
-          const availableTargets = await api.listTargets();
-          if (active) setTargets(availableTargets);
-        }
       })
       .catch((reason: unknown) => {
         if (active) {
@@ -78,18 +77,6 @@ export function App({ api }: { api: KeyflareApi }) {
     };
   }, [api]);
 
-  const targetIndex = useMemo(() => new Set(targets), [targets]);
-  const targetSuggestions = useMemo(() => {
-    const query = target.trim().toLowerCase();
-    const suggestions: string[] = [];
-    for (const availableTarget of targets) {
-      if (!query || availableTarget.toLowerCase().includes(query)) {
-        suggestions.push(availableTarget);
-      }
-      if (suggestions.length === 50) break;
-    }
-    return suggestions;
-  }, [target, targets]);
   const selectedLayout =
     capabilities?.layouts.find((layout) => layout.name === layoutName) ?? null;
   const canBuild = Boolean(
@@ -98,7 +85,6 @@ export function App({ api }: { api: KeyflareApi }) {
     (keymapMode === "default" || importedKeymapName) &&
     !busyAction,
   );
-  const targetExists = targetIndex.has(target);
 
   async function downloadSource() {
     setBusyAction("source");
@@ -106,9 +92,6 @@ export function App({ api }: { api: KeyflareApi }) {
     try {
       const status = await api.initializeSource();
       setEnvironment(status);
-      if (status.kind === "ready") {
-        setTargets(await api.listTargets());
-      }
     } catch (reason) {
       setError({
         summary: "Unable to download QMK source",
@@ -125,9 +108,6 @@ export function App({ api }: { api: KeyflareApi }) {
     try {
       const status = await api.getEnvironment();
       setEnvironment(status);
-      if (status.kind === "ready") {
-        setTargets(await api.listTargets());
-      }
     } catch (reason) {
       setError({
         summary: "QMK is not ready",
@@ -145,9 +125,6 @@ export function App({ api }: { api: KeyflareApi }) {
       const status = await api.selectQmkMsysRoot();
       if (status) {
         setEnvironment(status);
-        if (status.kind === "ready") {
-          setTargets(await api.listTargets());
-        }
       }
     } catch (reason) {
       setError({
@@ -159,25 +136,55 @@ export function App({ api }: { api: KeyflareApi }) {
     }
   }
 
-  async function loadTarget() {
-    if (!target) return;
+  async function selectKeyboardSource() {
+    setBusyAction("target");
+    setError(null);
+    setNotice(null);
+    try {
+      const selection = await api.selectKeyboardSource();
+      if (!selection) return;
+      setKeyboardSource(selection);
+      setTarget("");
+      setCapabilities(null);
+      setChannels([]);
+      if (selection.targets.length === 1) {
+        await inspectSelectedTarget(selection.targets[0]!);
+      }
+    } catch (reason) {
+      setError({
+        summary: "Unable to import this keyboard",
+        details: `${readError(reason)}. Choose a self-contained QMK keyboard source folder and try again.`,
+      });
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function selectTargetVariant(selectedTarget: string) {
+    setVariantMenuOpen(false);
     setBusyAction("target");
     setError(null);
     setNotice(null);
     setCapabilities(null);
     setChannels([]);
     try {
-      const inspected = await api.inspectTarget(target);
-      setCapabilities(inspected);
-      setLayoutName(inspected.layouts[0]?.name ?? "");
+      await inspectSelectedTarget(selectedTarget);
     } catch (reason) {
       setError({
-        summary: "Unable to load this keyboard",
-        details: `${readError(reason)}. Choose another upstream QMK target and try again.`,
+        summary: "Unable to load this keyboard variant",
+        details: `${readError(reason)}. Choose another target from this keyboard folder.`,
       });
     } finally {
       setBusyAction(null);
+      variantTriggerRef.current?.focus();
     }
+  }
+
+  async function inspectSelectedTarget(selectedTarget: string) {
+    const inspected = await api.inspectTarget(selectedTarget);
+    setTarget(selectedTarget);
+    setCapabilities(inspected);
+    setLayoutName(inspected.layouts[0]?.name ?? "");
   }
 
   async function selectKeymap() {
@@ -276,7 +283,7 @@ export function App({ api }: { api: KeyflareApi }) {
               </label>
             )}
           </div>
-          <KeyboardPreview layout={selectedLayout} />
+          <KeyboardPreview layout={selectedLayout} channels={channels} />
         </section>
 
         <section
@@ -298,47 +305,110 @@ export function App({ api }: { api: KeyflareApi }) {
           <section className="dock-pane keyboard-pane">
             <PaneHeading title="Keyboard" complete={Boolean(capabilities)} />
             <div className="pane-content">
-              <label className="field-label" htmlFor="target-select">
-                Keyboard target
-              </label>
-              <div className="target-input">
-                <Search aria-hidden="true" />
-                <input
-                  id="target-select"
-                  list="target-options"
-                  placeholder="Search QMK targets"
-                  autoComplete="off"
-                  value={target}
-                  onChange={(event) => {
-                    setTarget(event.target.value);
-                    setCapabilities(null);
-                    setChannels([]);
-                    setNotice(null);
-                  }}
-                />
-              </div>
-              <datalist id="target-options">
-                {targetSuggestions.map((availableTarget) => (
-                  <option key={availableTarget} value={availableTarget}>
-                    {availableTarget}
-                  </option>
-                ))}
-              </datalist>
               <button
-                className="accent-button full-width"
+                className="file-button source-button"
                 type="button"
-                disabled={!targetExists || Boolean(busyAction)}
-                onClick={loadTarget}
+                aria-label="Choose keyboard folder"
+                disabled={Boolean(busyAction)}
+                onClick={selectKeyboardSource}
               >
                 {busyAction === "target" ? (
                   <LoaderCircle className="spin" />
                 ) : (
-                  <Keyboard />
+                  <FolderOpen aria-hidden="true" />
                 )}
-                {busyAction === "target"
-                  ? "Reading QMK metadata"
-                  : "Load keyboard"}
+                <span>
+                  {busyAction === "target"
+                    ? "Reading keyboard source"
+                    : (keyboardSource?.name ?? "Choose keyboard folder")}
+                </span>
+                <ChevronRight aria-hidden="true" />
               </button>
+              <p className="source-help">
+                Select the folder that contains your keyboard.json and source
+                files.
+              </p>
+              {keyboardSource && keyboardSource.targets.length > 1 && (
+                <div
+                  className="variant-picker"
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      setVariantMenuOpen(false);
+                      variantTriggerRef.current?.focus();
+                      return;
+                    }
+                    if (
+                      !["ArrowDown", "ArrowUp", "Home", "End"].includes(
+                        event.key,
+                      )
+                    ) {
+                      return;
+                    }
+                    const options = Array.from(
+                      event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                        '[role="menuitemradio"]',
+                      ),
+                    );
+                    if (options.length === 0) return;
+                    event.preventDefault();
+                    const currentIndex = options.indexOf(
+                      document.activeElement as HTMLButtonElement,
+                    );
+                    let nextIndex = 0;
+                    if (event.key === "End") {
+                      nextIndex = options.length - 1;
+                    } else if (event.key === "ArrowUp") {
+                      nextIndex =
+                        currentIndex < 0
+                          ? options.length - 1
+                          : (currentIndex - 1 + options.length) %
+                            options.length;
+                    } else if (event.key === "ArrowDown" && currentIndex >= 0) {
+                      nextIndex = (currentIndex + 1) % options.length;
+                    }
+                    options[nextIndex]?.focus();
+                  }}
+                >
+                  <span className="field-label">Keyboard variant</span>
+                  <button
+                    ref={variantTriggerRef}
+                    className="variant-trigger"
+                    type="button"
+                    aria-haspopup="menu"
+                    aria-expanded={variantMenuOpen}
+                    onClick={() => setVariantMenuOpen((open) => !open)}
+                  >
+                    <span>
+                      {target ? formatTargetVariant(target) : "Choose variant"}
+                    </span>
+                    <ChevronRight aria-hidden="true" />
+                  </button>
+                  {variantMenuOpen && (
+                    <div
+                      className="variant-menu"
+                      role="menu"
+                      aria-label="Keyboard variants"
+                    >
+                      {keyboardSource.targets.map((availableTarget) => (
+                        <button
+                          key={availableTarget}
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={target === availableTarget}
+                          onClick={() =>
+                            void selectTargetVariant(availableTarget)
+                          }
+                        >
+                          <span>{formatTargetVariant(availableTarget)}</span>
+                          {target === availableTarget && (
+                            <Check aria-hidden="true" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </section>
 
@@ -374,13 +444,9 @@ export function App({ api }: { api: KeyflareApi }) {
                       <span className="channel-mark">
                         <Check aria-hidden="true" />
                       </span>
-                      <span>
+                      <span className="channel-copy">
                         <strong>{channel.label}</strong>
-                        <small>
-                          {channel.kind === "backlight"
-                            ? "Keyboard backlight"
-                            : "Lock indicator"}
-                        </small>
+                        <small>{channelDescription(channel.id)}</small>
                       </span>
                     </label>
                   ))}
@@ -545,7 +611,26 @@ function PaneHeading({
   );
 }
 
-function KeyboardPreview({ layout }: { layout: KeyboardLayout | null }) {
+const logicalIndicatorKeycodes: Partial<Record<ChannelId, readonly string[]>> =
+  {
+    num_lock: ["KC_NUM", "KC_NUM_LOCK"],
+    caps_lock: ["KC_CAPS", "KC_CAPS_LOCK"],
+    scroll_lock: ["KC_SCRL", "KC_SCROLL_LOCK", "KC_BRMD"],
+  };
+
+const logicalIndicatorLabels: Partial<Record<ChannelId, string>> = {
+  num_lock: "Num Lock",
+  caps_lock: "Caps Lock",
+  scroll_lock: "Scroll Lock",
+};
+
+function KeyboardPreview({
+  layout,
+  channels,
+}: {
+  layout: KeyboardLayout | null;
+  channels: ChannelId[];
+}) {
   if (!layout) {
     return (
       <div className="keyboard-empty" aria-label="Keyboard layout preview">
@@ -561,6 +646,24 @@ function KeyboardPreview({ layout }: { layout: KeyboardLayout | null }) {
   const maxY = Math.max(...layout.keys.map((key) => key.y + key.height));
   const width = maxX * unit + gap;
   const height = maxY * unit + gap;
+  const backlightSelected = channels.includes("backlight");
+  const selectedIndicatorChannels = channels.filter(
+    (channel) => logicalIndicatorKeycodes[channel],
+  );
+  const selectionDescriptions = channels.map((channel) => {
+    if (channel === "backlight") return "Backlight: all keys";
+    const keycodes = logicalIndicatorKeycodes[channel];
+    const label = logicalIndicatorLabels[channel];
+    if (!keycodes || !label) {
+      return `${formatChannelLabel(channel)}: no logical key mapping`;
+    }
+    const hasLogicalKey = layout.keys.some((key) =>
+      keycodeExpressionIncludesAny(key.keycode, keycodes),
+    );
+    return hasLogicalKey
+      ? `${formatChannelLabel(channel)}: ${label} key`
+      : `${formatChannelLabel(channel)}: no matching key in default keymap`;
+  });
 
   return (
     <div className="keyboard-stage" aria-label="Keyboard layout preview">
@@ -574,11 +677,23 @@ function KeyboardPreview({ layout }: { layout: KeyboardLayout | null }) {
           const y = key.y * unit + gap / 2;
           const keyWidth = key.width * unit - gap;
           const keyHeight = key.height * unit - gap;
-          const label = key.label || `${key.row},${key.column}`;
+          const label = formatKeyLabel(key);
+          const selected =
+            backlightSelected ||
+            selectedIndicatorChannels.some((channel) =>
+              keycodeExpressionIncludesAny(
+                key.keycode,
+                logicalIndicatorKeycodes[channel]!,
+              ),
+            );
           return (
-            <g key={`${key.row}-${key.column}-${index}`}>
+            <g
+              className={selected ? "key selected-output-key" : "key"}
+              key={`${key.row}-${key.column}-${index}`}
+            >
+              {selected && <title>{`${label} selected output`}</title>}
               <rect
-                className="key-shape"
+                className={`key-shape${selected ? " output-selected" : ""}`}
                 x={x}
                 y={y}
                 width={keyWidth}
@@ -593,8 +708,71 @@ function KeyboardPreview({ layout }: { layout: KeyboardLayout | null }) {
         })}
       </svg>
       <p className="layout-caption">{layout.name}</p>
+      {selectionDescriptions.length > 0 && (
+        <div className="output-selection-feedback" role="status">
+          {selectionDescriptions.map((description) => (
+            <span key={description}>
+              <Check aria-hidden="true" /> {description}
+            </span>
+          ))}
+          <small>
+            Logical key preview only. The hardware pin controls the LED.
+          </small>
+        </div>
+      )}
     </div>
   );
+}
+
+function keycodeExpressionIncludes(
+  expression: string | undefined,
+  keycode: string,
+): boolean {
+  if (!expression) return false;
+  const escapedKeycode = keycode.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  return new RegExp(`(^|[^A-Z0-9_])${escapedKeycode}($|[^A-Z0-9_])`, "u").test(
+    expression,
+  );
+}
+
+function keycodeExpressionIncludesAny(
+  expression: string | undefined,
+  keycodes: readonly string[],
+): boolean {
+  return keycodes.some((keycode) =>
+    keycodeExpressionIncludes(expression, keycode),
+  );
+}
+
+function formatKeyLabel(key: KeyboardLayout["keys"][number]): string {
+  if (key.label) return key.label;
+  for (const [channel, keycodes] of Object.entries(logicalIndicatorKeycodes)) {
+    if (keycodes && keycodeExpressionIncludesAny(key.keycode, keycodes)) {
+      return logicalIndicatorLabels[channel as ChannelId] ?? keycodes[0]!;
+    }
+  }
+  if (key.keycode?.startsWith("KC_")) {
+    return key.keycode.slice(3).replaceAll("_", " ");
+  }
+  return `${key.row},${key.column}`;
+}
+
+function formatChannelLabel(channel: ChannelId): string {
+  return channel === "backlight"
+    ? "Backlight"
+    : `${channel
+        .split("_")
+        .map((word) => `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`)
+        .join(" ")} indicator`;
+}
+
+function channelDescription(channel: ChannelId): string {
+  if (channel === "backlight") return "All keyboard backlight LEDs";
+  return `Dedicated ${formatChannelLabel(channel)} pin`;
+}
+
+function formatTargetVariant(target: string): string {
+  return target.split("/").slice(2).join("/") || "Base";
 }
 
 function LoadingScreen({

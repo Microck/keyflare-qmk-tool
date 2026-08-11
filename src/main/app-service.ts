@@ -6,6 +6,7 @@ import type { BuildRequest, BuildResult } from "./firmware-build";
 import type {
   BuildAndSaveInput,
   EnvironmentStatus,
+  KeyboardSourceSelection,
   SaveResult,
 } from "../shared/keyflare-api";
 import type { TargetCapabilities } from "../shared/keyflare-contract";
@@ -15,7 +16,9 @@ export interface FirmwareBuilder {
   initializeSource(): Promise<void>;
   validateQmkMsysRoot(root: string): string;
   setValidatedQmkMsysRoot(root: string): void;
-  listTargets(): Promise<string[]>;
+  importKeyboardSource(
+    sourceDirectory: string,
+  ): Promise<KeyboardSourceSelection>;
   inspectTarget(target: string): Promise<TargetCapabilities>;
   build(request: BuildRequest): Promise<BuildResult>;
 }
@@ -75,8 +78,13 @@ export class KeyflareService {
     return this.dependencies.builder.inspectEnvironment();
   }
 
-  listTargets(): Promise<string[]> {
-    return this.dependencies.builder.listTargets();
+  async selectKeyboardSource(
+    chooseSource: () => Promise<string | null>,
+  ): Promise<KeyboardSourceSelection | null> {
+    const sourceDirectory = await chooseSource();
+    return sourceDirectory
+      ? this.dependencies.builder.importKeyboardSource(sourceDirectory)
+      : null;
   }
 
   inspectTarget(target: string): Promise<TargetCapabilities> {

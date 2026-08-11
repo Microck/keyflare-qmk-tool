@@ -1,6 +1,6 @@
 {
   "name": "keyflare",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Build simple reactive-lighting firmware for supported QMK keyboards.",
   "type": "module",
   "main": "./out/main/index.js",

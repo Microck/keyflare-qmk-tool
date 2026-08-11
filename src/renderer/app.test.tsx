@@ -32,8 +32,64 @@ const scrollLockOnlyTarget: TargetCapabilities = {
     {
       name: "LAYOUT",
       keys: [
-        { row: 0, column: 0, x: 0, y: 0, width: 1, height: 1, label: "A" },
+        {
+          row: 0,
+          column: 0,
+          x: 0,
+          y: 0,
+          width: 1,
+          height: 1,
+          label: "Scroll Lock",
+          keycode: "KC_SCRL",
+        },
         { row: 0, column: 1, x: 1, y: 0, width: 1, height: 1, label: "B" },
+      ],
+    },
+  ],
+};
+
+const fullSizeTarget: TargetCapabilities = {
+  target: "test/full-size",
+  keyboardName: "Full Size",
+  channels: [
+    { id: "backlight", kind: "backlight", label: "Backlight" },
+    { id: "num_lock", kind: "indicator", label: "Num Lock indicator" },
+    { id: "caps_lock", kind: "indicator", label: "Caps Lock indicator" },
+  ],
+  layouts: [
+    {
+      name: "LAYOUT",
+      keys: [
+        {
+          row: 0,
+          column: 0,
+          x: 0,
+          y: 0,
+          width: 1,
+          height: 1,
+          label: "Caps Lock",
+          keycode: "KC_CAPS_LOCK",
+        },
+        {
+          row: 0,
+          column: 1,
+          x: 1,
+          y: 0,
+          width: 1,
+          height: 1,
+          label: "Num Lock",
+          keycode: "KC_NUM_LOCK",
+        },
+        {
+          row: 0,
+          column: 2,
+          x: 2,
+          y: 0,
+          width: 1,
+          height: 1,
+          label: "A",
+          keycode: "KC_A",
+        },
       ],
     },
   ],
@@ -49,7 +105,7 @@ class InMemoryKeyflareApi implements KeyflareApi {
   constructor(
     private environment: EnvironmentStatus,
     private readonly capabilities: TargetCapabilities = scrollLockOnlyTarget,
-    private readonly targets = [capabilities.target, "test/unsupported"],
+    private readonly targets = [capabilities.target],
   ) {}
 
   async getEnvironment(): Promise<EnvironmentStatus> {
@@ -61,8 +117,11 @@ class InMemoryKeyflareApi implements KeyflareApi {
     return this.environment;
   }
 
-  async listTargets(): Promise<string[]> {
-    return this.targets;
+  async selectKeyboardSource(): Promise<{
+    name: string;
+    targets: string[];
+  }> {
+    return { name: "scroll-pad", targets: this.targets };
   }
 
   async inspectTarget(): Promise<TargetCapabilities> {
@@ -118,7 +177,7 @@ describe("Keyflare", () => {
     const user = userEvent.setup();
     render(<App api={api} />);
 
-    await screen.findByLabelText("Keyboard target");
+    await screen.findByRole("button", { name: "Choose keyboard folder" });
     await user.click(screen.getByRole("button", { name: "Minimize" }));
     await user.click(screen.getByRole("button", { name: "Maximize" }));
     expect(screen.getByRole("button", { name: "Restore" })).toBeInTheDocument();
@@ -182,7 +241,9 @@ describe("Keyflare", () => {
     );
 
     expect(api.qmkMsysSelections).toEqual(["selected"]);
-    expect(await screen.findByLabelText("Keyboard target")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Choose keyboard folder" }),
+    ).toBeInTheDocument();
   });
 
   it("lets Windows users replace an unhealthy QMK MSYS folder", async () => {
@@ -212,7 +273,9 @@ describe("Keyflare", () => {
     await user.click(
       await screen.findByRole("button", { name: "Download QMK source" }),
     );
-    expect(await screen.findByLabelText("Keyboard target")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Choose keyboard folder" }),
+    ).toBeInTheDocument();
   });
 
   it("shows only declared channels and saves a compiled artifact", async () => {
@@ -220,11 +283,9 @@ describe("Keyflare", () => {
     const user = userEvent.setup();
     render(<App api={api} />);
 
-    await user.type(
-      await screen.findByLabelText("Keyboard target"),
-      "test/scroll-pad",
+    await user.click(
+      await screen.findByRole("button", { name: "Choose keyboard folder" }),
     );
-    await user.click(screen.getByRole("button", { name: "Load keyboard" }));
 
     expect(await screen.findByText("Scroll Pad")).toBeInTheDocument();
     expect(
@@ -235,12 +296,18 @@ describe("Keyflare", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/color/iu)).not.toBeInTheDocument();
     expect(screen.getByLabelText("Keyboard layout preview")).toHaveTextContent(
-      "A",
+      "Scroll Lock",
     );
 
     await user.click(
       screen.getByRole("checkbox", { name: "Scroll Lock indicator" }),
     );
+    expect(
+      document.querySelectorAll(".key-shape.output-selected"),
+    ).toHaveLength(1);
+    expect(
+      screen.getByText("Scroll Lock indicator: Scroll Lock key"),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Build firmware" }));
 
     expect(
@@ -260,11 +327,9 @@ describe("Keyflare", () => {
     const user = userEvent.setup();
     render(<App api={api} />);
 
-    await user.type(
-      await screen.findByLabelText("Keyboard target"),
-      "test/scroll-pad",
+    await user.click(
+      await screen.findByRole("button", { name: "Choose keyboard folder" }),
     );
-    await user.click(screen.getByRole("button", { name: "Load keyboard" }));
     await screen.findByText("Scroll Pad");
     await user.click(screen.getByRole("radio", { name: "Import keymap.json" }));
 
@@ -279,25 +344,73 @@ describe("Keyflare", () => {
     });
   });
 
-  it("limits target suggestions while searching a large QMK catalog", async () => {
-    const targets = Array.from(
-      { length: 3_000 },
-      (_, index) => `vendor/board-${index}`,
+  it("shows which logical keys each selected output represents", async () => {
+    const api = new InMemoryKeyflareApi(readyEnvironment, fullSizeTarget);
+    const user = userEvent.setup();
+    render(<App api={api} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Choose keyboard folder" }),
     );
+    await screen.findByText("Full Size");
+
+    await user.click(screen.getByRole("checkbox", { name: "Backlight" }));
+    expect(
+      document.querySelectorAll(".key-shape.output-selected"),
+    ).toHaveLength(3);
+    expect(screen.getByText("Backlight: all keys")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("checkbox", { name: "Backlight" }));
+    await user.click(
+      screen.getByRole("checkbox", { name: "Caps Lock indicator" }),
+    );
+    expect(
+      document.querySelectorAll(".key-shape.output-selected"),
+    ).toHaveLength(1);
+    expect(
+      screen.getByText("Caps Lock indicator: Caps Lock key"),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("checkbox", { name: "Num Lock indicator" }),
+    );
+    expect(
+      document.querySelectorAll(".key-shape.output-selected"),
+    ).toHaveLength(2);
+    expect(
+      screen.getByText("Num Lock indicator: Num Lock key"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows imported variants in an anchored in-app menu", async () => {
+    const targets = [
+      "keyflare_imported/board/v1",
+      "keyflare_imported/board/v2",
+    ];
     const api = new InMemoryKeyflareApi(
       readyEnvironment,
       scrollLockOnlyTarget,
       targets,
     );
     const user = userEvent.setup();
-    const { container } = render(<App api={api} />);
+    render(<App api={api} />);
 
-    await user.type(await screen.findByLabelText("Keyboard target"), "board-1");
-
-    await waitFor(() => {
-      expect(container.querySelectorAll("#target-options option")).toHaveLength(
-        50,
-      );
-    });
+    await user.click(
+      await screen.findByRole("button", { name: "Choose keyboard folder" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Choose variant" }));
+    expect(screen.getByRole("menu", { name: "Keyboard variants" })).toHaveClass(
+      "variant-menu",
+    );
+    await user.keyboard("{ArrowUp}");
+    expect(screen.getByRole("menuitemradio", { name: "v2" })).toHaveFocus();
+    screen.getByRole("button", { name: "Choose variant" }).focus();
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByRole("menuitemradio", { name: "v1" })).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByRole("menuitemradio", { name: "v2" })).toHaveFocus();
+    await user.click(screen.getByRole("menuitemradio", { name: "v2" }));
+    expect(await screen.findByText("Scroll Pad")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "v2" })).toHaveFocus();
   });
 });

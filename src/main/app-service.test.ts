@@ -40,6 +40,7 @@ afterEach(async () => {
 });
 
 class RecordingBuilder implements FirmwareBuilder {
+  readonly importedSourceDirectories: string[] = [];
   readonly qmkMsysRoots: string[] = [];
   readonly requests: BuildRequest[] = [];
 
@@ -67,8 +68,15 @@ class RecordingBuilder implements FirmwareBuilder {
     this.qmkMsysRoots.push(root);
   }
 
-  async listTargets(): Promise<string[]> {
-    return ["test/board"];
+  async importKeyboardSource(sourceDirectory: string): Promise<{
+    name: string;
+    targets: string[];
+  }> {
+    this.importedSourceDirectories.push(sourceDirectory);
+    return {
+      name: "test-board",
+      targets: ["keyflare_imported/test-board"],
+    };
   }
 
   async inspectTarget(): Promise<typeof capabilities> {
@@ -87,6 +95,25 @@ class RecordingBuilder implements FirmwareBuilder {
 }
 
 describe("KeyflareService", () => {
+  it("keeps an imported keyboard folder path out of the renderer", async () => {
+    const root = await mkdtemp(join(tmpdir(), "keyflare-service-source-"));
+    temporaryDirectories.push(root);
+    const builder = new RecordingBuilder(readyEnvironment(root), "unused.hex");
+    const service = new KeyflareService({ builder });
+    const selectedDirectory = join(root, "private-source");
+
+    await expect(
+      service.selectKeyboardSource(async () => selectedDirectory),
+    ).resolves.toEqual({
+      name: "test-board",
+      targets: ["keyflare_imported/test-board"],
+    });
+    await expect(
+      service.selectKeyboardSource(async () => null),
+    ).resolves.toBeNull();
+    expect(builder.importedSourceDirectories).toEqual([selectedDirectory]);
+  });
+
   it("validates and remembers a selected QMK MSYS folder", async () => {
     const root = await mkdtemp(join(tmpdir(), "keyflare-service-"));
     temporaryDirectories.push(root);

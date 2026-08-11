@@ -6,21 +6,21 @@ This is Keyflare's design contract. The official VIA repository does not contain
 
 ## Product shape
 
-Keyflare has one job: select a QMK keyboard, select declared reactive outputs, choose a keymap, and build firmware. Keep the whole flow in one window.
+Keyflare has one job: import a QMK keyboard source folder, select declared reactive outputs, choose a keymap, and build firmware. Keep the whole flow in one window.
 
 ```text
 +--------------------------------------------------------------------------+
 | KEYFLARE                 [ Configure ]               QMK ...  _  []  X   |
 +--------------------------------------------------------------------------+
-| QMK target                                                               |
+| QMK keyboard source                                                      |
 | Keyboard name                                      Layout [ selector ]    |
 |                                                                          |
 |                         Keyboard preview                                 |
 |                                                                          |
 +----+----------------------+------------------------+----------------------+
 | KB | Keyboard             | Reactive outputs       | Keymap and build     |
-| LED| target search        | supported toggles only | default / import     |
-| CFG| load                 | hardware color note    | build firmware       |
+| LED| source folder        | supported toggles only | default / import     |
+| CFG| variant if needed    | hardware color note    | build firmware       |
 +----+----------------------+------------------------+----------------------+
 | Build status                         Reactive on key press, hardware color |
 +--------------------------------------------------------------------------+
@@ -55,7 +55,9 @@ Keyflare has one job: select a QMK keyboard, select declared reactive outputs, c
 - On Windows, detect the default QMK MSYS path and let users remember a custom installation folder.
 - Do not show color controls. The installed LED sets the color.
 - Keep unavailable controls visible when their position teaches the flow, but disable them clearly.
-- Keep keyboard target search bounded to 50 suggestions.
+- Use a native folder picker for keyboard source. If the folder declares several targets, anchor the in-app variant menu to its trigger and keep both edges aligned.
+- Selecting backlight highlights all preview keys. Selecting a lock indicator highlights its matching logical key when the active keymap declares one.
+- Always state that key highlighting is a logical association, not proof of physical LED placement.
 - Keep the native application menu hidden. The custom top strip owns drag and window controls.
 - Use motion only for active progress indicators. Honor reduced-motion preferences.
 

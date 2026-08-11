@@ -238,6 +238,12 @@ summary:focus-visible {
   stroke-width: 1px;
 }
 
+.key-shape.output-selected {
+  fill: var(--accent);
+  stroke: #fff5f1;
+  stroke-width: 2px;
+}
+
 .keyboard-stage text {
   fill: var(--accent);
   font-size: 8px;
@@ -245,11 +251,45 @@ summary:focus-visible {
   pointer-events: none;
 }
 
+.selected-output-key text {
+  fill: var(--accent-ink);
+  font-weight: 700;
+}
+
 .layout-caption {
   margin: 0;
   color: var(--label);
   font-size: 10px;
   letter-spacing: 0.08em;
+}
+
+.output-selection-feedback {
+  display: flex;
+  max-width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 12px;
+  color: var(--accent);
+  flex-wrap: wrap;
+  font-size: 10px;
+}
+
+.output-selection-feedback span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.output-selection-feedback svg {
+  width: 12px;
+  height: 12px;
+}
+
+.output-selection-feedback small {
+  width: 100%;
+  color: var(--label);
+  text-align: center;
+  font-size: 9px;
 }
 
 .keyboard-empty {
@@ -358,39 +398,6 @@ summary:focus-visible {
   font-weight: 600;
 }
 
-.target-input {
-  display: flex;
-  height: 36px;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid #555252;
-  border-radius: 3px;
-  background: var(--control);
-  padding: 0 10px;
-}
-
-.target-input:focus-within {
-  border-color: var(--accent);
-}
-
-.target-input svg {
-  width: 15px;
-  color: var(--label);
-}
-
-.target-input input {
-  width: 100%;
-  min-width: 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  font-size: 12px;
-}
-
-.target-input input::placeholder {
-  color: #8a8787;
-}
-
 .accent-button,
 .secondary-button,
 .build-button {
@@ -433,6 +440,99 @@ summary:focus-visible {
   margin-top: 10px;
 }
 
+.source-button {
+  min-height: 38px;
+  margin-top: 0;
+}
+
+.source-help {
+  margin: 7px 0 0;
+  color: var(--label);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.variant-picker {
+  position: relative;
+  margin-top: 12px;
+}
+
+.variant-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 36px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #555252;
+  border-radius: 3px;
+  color: var(--label-strong);
+  background: var(--control);
+  padding: 0 9px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.variant-trigger span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.variant-trigger svg {
+  width: 15px;
+  height: 15px;
+  transform: rotate(90deg);
+}
+
+.variant-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+}
+
+.variant-menu {
+  position: absolute;
+  z-index: 15;
+  inset-block-start: calc(100% + 4px);
+  inset-inline: 0;
+  display: grid;
+  max-height: 170px;
+  border: 1px solid #555252;
+  border-radius: 3px;
+  background: #282626;
+  padding: 4px;
+  overflow-y: auto;
+  box-shadow: 0 12px 28px rgb(0 0 0 / 38%);
+}
+
+.variant-menu button {
+  display: grid;
+  min-height: 34px;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 8px;
+  border-radius: 2px;
+  color: var(--label-strong);
+  background: transparent;
+  padding: 0 8px;
+  cursor: pointer;
+  text-align: start;
+  font-size: 11px;
+}
+
+.variant-menu button:hover,
+.variant-menu button:focus-visible,
+.variant-menu button[aria-checked="true"] {
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+
+.variant-menu svg {
+  width: 14px;
+  height: 14px;
+}
+
 .muted-copy,
 .empty-channels p,
 .empty-channels small,
@@ -470,14 +570,15 @@ summary:focus-visible {
 
 .channel-row,
 .choice-row {
-  display: flex;
   align-items: center;
   gap: 10px;
   cursor: pointer;
 }
 
 .channel-row {
-  min-height: 42px;
+  display: grid;
+  min-height: 48px;
+  grid-template-columns: 19px minmax(0, 1fr);
   border-radius: 3px;
   background: var(--control);
   padding: 7px 10px;
@@ -529,6 +630,11 @@ summary:focus-visible {
   font-weight: 600;
 }
 
+.channel-copy {
+  min-width: 0;
+  line-height: 1.2;
+}
+
 .channel-row small,
 .choice-row small {
   display: block;
@@ -542,6 +648,7 @@ summary:focus-visible {
 }
 
 .choice-row {
+  display: flex;
   min-height: 39px;
   padding: 4px 0;
 }

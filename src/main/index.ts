@@ -62,6 +62,16 @@ async function chooseKeymap(parent: BrowserWindow): Promise<string | null> {
   return selection.canceled ? null : (selection.filePaths[0] ?? null);
 }
 
+async function chooseKeyboardSource(
+  parent: BrowserWindow,
+): Promise<string | null> {
+  const selection = await dialog.showOpenDialog(parent, {
+    title: "Choose a QMK keyboard source folder",
+    properties: ["openDirectory"],
+  });
+  return selection.canceled ? null : (selection.filePaths[0] ?? null);
+}
+
 async function chooseQmkMsysRoot(
   parent: BrowserWindow,
 ): Promise<string | null> {
@@ -99,7 +109,10 @@ function registerIpc({
   ipcMain.handle(ipcChannels.initializeSource, () =>
     service.initializeSource(),
   );
-  ipcMain.handle(ipcChannels.listTargets, () => service.listTargets());
+  ipcMain.handle(ipcChannels.selectKeyboardSource, (event) => {
+    const parent = getInvokingWindow(event);
+    return service.selectKeyboardSource(() => chooseKeyboardSource(parent));
+  });
   ipcMain.handle(ipcChannels.inspectTarget, (_event, input: unknown) =>
     service.inspectTarget(inspectTargetInputSchema.parse(input)),
   );

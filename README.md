@@ -2,7 +2,7 @@
 
 build fixed-color reactive lighting into QMK firmware without editing C by hand.
 
-pick an exact upstream keyboard target, keep its default keymap or import your own `keymap.json`, select the lighting channels QMK actually declares, and save a firmware file for your normal flashing tool.
+choose your QMK keyboard source folder, keep its default keymap or import your own `keymap.json`, select the lighting channels QMK actually declares, and save a firmware file for your normal flashing tool.
 
 keyflare never guesses where LEDs are installed. if QMK only declares a Scroll Lock indicator, Scroll Lock is the only channel you can select. the physical LED decides the color.
 
@@ -10,7 +10,7 @@ keyflare never guesses where LEDs are installed. if QMK only declares a Scroll L
 
 ## features
 
-- exact keyboard and revision selection from a pinned upstream QMK checkout
+- local QMK keyboard source import, including target families with revisions
 - default QMK keymaps or imported `keymap.json` files for the same target
 - read-only keyboard geometry from QMK layout metadata
 - standard backlight, Num Lock, Caps Lock, Scroll Lock, Compose, and Kana channels
@@ -24,7 +24,7 @@ keyflare never guesses where LEDs are installed. if QMK only declares a Scroll L
 ## how it works
 
 ```text
-keyboard target + keymap + selected declared channels
+keyboard source + keymap + selected declared channels
                          |
                          v
                   keyflare desktop app
@@ -46,7 +46,7 @@ keyboard target + keymap + selected declared channels
 
 the generated QMK module counts held physical keys. it turns the selected channels on after the first press, then restores the existing backlight or host indicator state after the last release.
 
-the keyboard preview is informational. keys are not individually selectable because standard QMK metadata cannot prove which physical LEDs are connected to which keys.
+the preview highlights every key for backlight and the matching logical lock key for an indicator. this feedback explains the selected channel. it does not claim that the indicator LED is physically installed under that key.
 
 ---
 
@@ -54,7 +54,7 @@ the keyboard preview is informational. keys are not individually selectable beca
 
 1. install QMK's supported build environment for your operating system.
 2. open keyflare and let it download the pinned QMK source on first launch.
-3. search for the exact keyboard target and revision you intend to flash.
+3. choose the QMK keyboard source folder you intend to build. if it contains several revisions, choose the exact target from the aligned variant menu.
 4. use the default keymap or import a matching QMK `keymap.json`.
 5. select one or more declared reactive channels.
 6. build and save the firmware artifact.
@@ -88,7 +88,7 @@ keyflare uses QMK's supported host environment instead of bundling several gigab
 
 run `qmk doctor` if setup fails. keyflare accepts QMK's minor-warning status because missing flashing rules do not block compilation, but it stops on major toolchain errors.
 
-the managed firmware checkout is pinned to `9caa5f871ddb9813c7370708be62d7a3e1cfeb75`.
+the managed QMK core is pinned to `9caa5f871ddb9813c7370708be62d7a3e1cfeb75`. a keyboard folder is not a complete compiler, so keyflare keeps the build system in a sparse checkout that excludes QMK's upstream keyboard catalog. users import only the keyboard source they want to build.
 
 ---
 
@@ -121,10 +121,10 @@ the release workflow builds unsigned Windows x64, macOS x64/ARM64, and Linux x64
 ## architecture
 
 - `src/renderer` owns the VIA-inspired interface and has no Node.js access.
-- `src/preload` exposes six fixed operations through Electron's context bridge.
+- `src/preload` exposes fixed operations through Electron's context bridge.
 - `src/main/index.ts` accepts dialogs only from the active trusted window.
-- `src/main/app-service.ts` owns selected-keymap state, compilation requests, and artifact saving.
-- `src/main/firmware-build.ts` validates QMK, manages the pinned checkout, and runs each compilation in an isolated temporary userspace.
+- `src/main/app-service.ts` owns selected-source and selected-keymap paths, compilation requests, and artifact saving.
+- `src/main/firmware-build.ts` validates QMK, imports one keyboard family into the managed checkout, and runs each compilation in an isolated temporary userspace.
 - `src/shared` contains the validated IPC and QMK metadata contracts.
 - `resources/qmk-module/keyflare/reactive` contains the QMK Community Module copied into each managed build.
 

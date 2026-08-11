@@ -7,6 +7,7 @@ const janeInfo = {
   features: { backlight: true },
   backlight: { pin: "D4" },
   indicators: { caps_lock: "D1", scroll_lock: "D6" },
+  layout_aliases: { LAYOUT: "LAYOUT_tkl_ansi" },
   layouts: {
     LAYOUT_tkl_ansi: {
       layout: [
@@ -18,10 +19,22 @@ const janeInfo = {
   },
 };
 
+const janeDefaultKeymap = {
+  keyboard: "tgr/jane/v2",
+  keymap: "default",
+  layout: "LAYOUT",
+  layers: [["KC_ESC", "KC_F1", "KC_CAPS"]],
+};
+
 describe("normalizeQmkInfo", () => {
   it("exposes only declared channels and keyboard geometry", () => {
-    expect(normalizeQmkInfo({ target: "tgr/jane/v2", info: janeInfo }))
-      .toMatchInlineSnapshot(`
+    expect(
+      normalizeQmkInfo({
+        target: "tgr/jane/v2",
+        info: janeInfo,
+        keymap: janeDefaultKeymap,
+      }),
+    ).toMatchInlineSnapshot(`
       {
         "channels": [
           {
@@ -47,6 +60,7 @@ describe("normalizeQmkInfo", () => {
               {
                 "column": 0,
                 "height": 1,
+                "keycode": "KC_ESC",
                 "label": "Esc",
                 "row": 0,
                 "width": 1,
@@ -56,6 +70,7 @@ describe("normalizeQmkInfo", () => {
               {
                 "column": 1,
                 "height": 1,
+                "keycode": "KC_F1",
                 "label": "F1",
                 "row": 0,
                 "width": 1,
@@ -65,6 +80,7 @@ describe("normalizeQmkInfo", () => {
               {
                 "column": 0,
                 "height": 1,
+                "keycode": "KC_CAPS",
                 "label": "Tab",
                 "row": 1,
                 "width": 1.5,
@@ -92,6 +108,29 @@ describe("normalizeQmkInfo", () => {
     ).toEqual([]);
   });
 
+  it("adds keycodes only to the layout used by the default keymap", () => {
+    const capabilities = normalizeQmkInfo({
+      target: "tgr/jane/v2",
+      info: {
+        ...janeInfo,
+        layouts: {
+          ...janeInfo.layouts,
+          LAYOUT_alternate: {
+            layout: [{ matrix: [0, 0], x: 0, y: 0 }],
+          },
+        },
+      },
+      keymap: janeDefaultKeymap,
+    });
+
+    expect(capabilities.layouts[0]?.keys.map((key) => key.keycode)).toEqual([
+      "KC_ESC",
+      "KC_F1",
+      "KC_CAPS",
+    ]);
+    expect(capabilities.layouts[1]?.keys[0]?.keycode).toBeUndefined();
+  });
+
   it("rejects malformed matrix coordinates at the metadata seam", () => {
     expect(() =>
       normalizeQmkInfo({
@@ -104,5 +143,15 @@ describe("normalizeQmkInfo", () => {
         },
       }),
     ).toThrow("Invalid QMK keyboard metadata");
+  });
+
+  it("reports malformed default keymaps as a Keyflare error", () => {
+    expect(() =>
+      normalizeQmkInfo({
+        target: "broken/board",
+        info: janeInfo,
+        keymap: { layout: "LAYOUT" },
+      }),
+    ).toThrow("Invalid QMK keymap");
   });
 });
