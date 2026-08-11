@@ -144,7 +144,7 @@ describe("Keyflare", () => {
 
     expect(
       await screen.findByRole("heading", {
-        name: "Install QMK before you build",
+        name: "Set up QMK build tools",
       }),
     ).toBeInTheDocument();
     expect(
@@ -156,6 +156,10 @@ describe("Keyflare", () => {
     expect(
       screen.queryByRole("button", { name: "Choose QMK MSYS folder" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("navigation", { name: "Setup progress" }),
+    ).toHaveTextContent("QMK source");
+    expect(screen.getByText("Technical details")).toBeInTheDocument();
   });
 
   it("lets Windows users select a custom QMK MSYS folder", async () => {
@@ -168,6 +172,10 @@ describe("Keyflare", () => {
     });
     const user = userEvent.setup();
     render(<App api={api} />);
+
+    expect(await screen.findByText("Windows setup")).toBeInTheDocument();
+    expect(screen.queryByText(/^macOS:/u)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Linux:/u)).not.toBeInTheDocument();
 
     await user.click(
       await screen.findByRole("button", { name: "Choose QMK MSYS folder" }),

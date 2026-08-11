@@ -55,6 +55,8 @@ describe("resolveToolCommands", () => {
 
   it("uses the official QMK MSYS shell when it is installed on Windows", () => {
     const bashPath = "C:\\QMK_MSYS\\usr\\bin\\bash.exe";
+    const qmkMsysPath =
+      "/opt/qmk/bin:/opt/uv/tools/bin:/ucrt64/bin:/usr/local/bin:/usr/bin:/bin:$PATH";
 
     expect(
       resolveToolCommands({
@@ -65,18 +67,28 @@ describe("resolveToolCommands", () => {
     ).toEqual({
       qmk: {
         command: bashPath,
-        argsPrefix: ["-lc", 'qmk "$@"', "keyflare-qmk"],
+        argsPrefix: [
+          "--noprofile",
+          "--norc",
+          "-c",
+          `export PATH=${qmkMsysPath}; export QMK_DISTRIB_DIR=/opt/qmk; export PYTHONUTF8=1; export MAKE=make; exec qmk "$@"`,
+          "keyflare-qmk",
+        ],
         env: {
-          CHERE_INVOKING: "1",
           MSYSTEM: "UCRT64",
           MSYS2_PATH_TYPE: "inherit",
         },
       },
       git: {
         command: bashPath,
-        argsPrefix: ["-lc", 'git "$@"', "keyflare-git"],
+        argsPrefix: [
+          "--noprofile",
+          "--norc",
+          "-c",
+          `export PATH=${qmkMsysPath}; export QMK_DISTRIB_DIR=/opt/qmk; export PYTHONUTF8=1; export MAKE=make; exec git "$@"`,
+          "keyflare-git",
+        ],
         env: {
-          CHERE_INVOKING: "1",
           MSYSTEM: "UCRT64",
           MSYS2_PATH_TYPE: "inherit",
         },
@@ -170,7 +182,14 @@ describe("FirmwareBuildModule source setup", () => {
     expect(runner.requests[0]).toMatchObject({ command: "qmk" });
     expect(runner.requests.at(-2)).toMatchObject({
       command: "C:\\QMK_MSYS\\usr\\bin\\bash.exe",
-      args: ["-lc", 'qmk "$@"', "keyflare-qmk", "--version"],
+      args: [
+        "--noprofile",
+        "--norc",
+        "-c",
+        expect.stringContaining("exec qmk"),
+        "keyflare-qmk",
+        "--version",
+      ],
     });
   });
 

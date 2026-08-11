@@ -607,15 +607,60 @@ function LoadingScreen({
   return (
     <div className="setup-shell">
       <TitleBar api={api} />
-      <main className="setup-content" aria-live="polite">
-        <LoaderCircle className="setup-symbol spin" aria-hidden="true" />
-        <h1>Checking QMK</h1>
-        <p>
-          {error?.details ??
-            "Keyflare is checking the local build environment."}
-        </p>
+      <main className="setup-workspace">
+        <SetupProgress checking />
+        <section className="setup-pane" aria-live="polite">
+          <div className="setup-pane-content setup-loading">
+            <LoaderCircle className="spin" aria-hidden="true" />
+            <div>
+              <p className="workspace-kicker">QMK environment</p>
+              <h1>Checking QMK</h1>
+              <p>
+                {error?.details ??
+                  "Keyflare is checking the local build environment."}
+              </p>
+            </div>
+          </div>
+        </section>
       </main>
     </div>
+  );
+}
+
+function SetupProgress({
+  checking = false,
+  sourceRequired = false,
+}: {
+  checking?: boolean;
+  sourceRequired?: boolean;
+}) {
+  return (
+    <nav className="setup-progress" aria-label="Setup progress">
+      <p>SETUP</p>
+      <ol>
+        <li className={sourceRequired ? "complete" : "active"}>
+          <span>{sourceRequired ? <Check aria-hidden="true" /> : "1"}</span>
+          <div>
+            <strong>Build tools</strong>
+            <small>{checking ? "Checking" : "QMK command line"}</small>
+          </div>
+        </li>
+        <li className={sourceRequired ? "active" : "pending"}>
+          <span>2</span>
+          <div>
+            <strong>QMK source</strong>
+            <small>Pinned firmware tree</small>
+          </div>
+        </li>
+        <li className="pending">
+          <span>3</span>
+          <div>
+            <strong>Configure</strong>
+            <small>Choose keyboard</small>
+          </div>
+        </li>
+      </ol>
+    </nav>
   );
 }
 
@@ -641,103 +686,107 @@ function SetupScreen({
   const canChooseQmkMsysRoot =
     environment.canSelectQmkMsysRoot && !sourceRequired;
   let heading = "Repair the QMK build environment";
-  let actionLabel = "Check QMK setup again";
+  let description =
+    "QMK was found, but its environment check failed. Repair the selected installation or choose another folder.";
+  let actionLabel = "Check again";
   let SetupActionIcon = RotateCw;
   if (sourceRequired) {
-    heading = "Download Keyflare's QMK source";
+    heading = "Download QMK source";
+    description =
+      "Keyflare keeps a pinned QMK checkout in its app data. The first download can take several minutes.";
     actionLabel = "Download QMK source";
     SetupActionIcon = Save;
   } else if (toolchainRequired) {
-    heading = "Install QMK before you build";
+    heading = "Set up QMK build tools";
+    description =
+      "Keyflare uses QMK's supported build tools. It does not bundle compilers or device drivers.";
   }
 
   return (
     <div className="setup-shell">
       <TitleBar api={api} />
-      <main className="setup-content">
-        <span className="setup-symbol">
-          <SlidersHorizontal aria-hidden="true" />
-        </span>
-        <p className="workspace-kicker">One-time setup</p>
-        <h1>{heading}</h1>
-        {sourceRequired ? (
-          <p>
-            Keyflare keeps a pinned QMK checkout in its app data. The download
-            can take several minutes.
-          </p>
-        ) : (
-          <>
-            <p>
-              Keyflare uses QMK's supported build tools. It does not bundle
-              compilers or device drivers.
-            </p>
-            <ul className="platform-list">
-              <li>
-                <strong>Windows:</strong> Keyflare finds C:\QMK_MSYS
-                automatically. If you installed it elsewhere, choose that
-                QMK_MSYS folder below.
-              </li>
-              <li>
-                <strong>macOS:</strong> install QMK with Homebrew, then run QMK
-                setup.
-              </li>
-              <li>
-                <strong>Linux:</strong> install QMK CLI and run its bootstrap
-                setup.
-              </li>
-            </ul>
-          </>
-        )}
-        <div className="setup-detail">
-          <strong>{environment.summary}</strong>
-          <code>{error?.details ?? environment.details}</code>
-        </div>
-        {canChooseQmkMsysRoot ? (
-          <div className="setup-actions">
-            <button
-              className="secondary-button setup-action"
-              type="button"
-              disabled={busyAction !== null}
-              onClick={onCheck}
-            >
-              {busyAction === "source" ? (
-                <LoaderCircle className="spin" />
-              ) : (
-                <RotateCw />
-              )}
-              {busyAction === "source" ? "Checking QMK" : actionLabel}
-            </button>
-            <button
-              className="accent-button setup-action"
-              type="button"
-              disabled={busyAction !== null}
-              onClick={onSelectQmkMsysRoot}
-            >
-              {busyAction === "qmk-msys" ? (
-                <LoaderCircle className="spin" />
-              ) : (
-                <FolderOpen />
-              )}
-              {busyAction === "qmk-msys"
-                ? "Checking folder"
-                : "Choose QMK MSYS folder"}
-            </button>
-          </div>
-        ) : (
-          <button
-            className="accent-button setup-action"
-            type="button"
-            disabled={busyAction !== null}
-            onClick={sourceRequired ? onDownload : onCheck}
-          >
-            {busyAction ? (
-              <LoaderCircle className="spin" />
-            ) : (
-              <SetupActionIcon />
+      <main className="setup-workspace">
+        <SetupProgress sourceRequired={sourceRequired} />
+        <section className="setup-pane">
+          <header className="setup-pane-header">
+            <p className="workspace-kicker">QMK environment</p>
+            <h1>{heading}</h1>
+            <p>{description}</p>
+          </header>
+          <div className="setup-pane-content">
+            <div className="setup-status">
+              <span aria-hidden="true" />
+              <div>
+                <small>Needs attention</small>
+                <strong>{error?.summary ?? environment.summary}</strong>
+              </div>
+            </div>
+
+            {!sourceRequired && (
+              <div className="setup-instructions">
+                <strong>
+                  {canChooseQmkMsysRoot ? "Windows setup" : "Supported setup"}
+                </strong>
+                <p>
+                  {canChooseQmkMsysRoot
+                    ? "Choose the QMK_MSYS folder you already use. Keyflare also checks C:\\QMK_MSYS automatically."
+                    : "Install QMK with Homebrew on macOS, or run the QMK bootstrap setup on Linux. Then check again."}
+                </p>
+              </div>
             )}
-            {busyAction ? "Working" : actionLabel}
-          </button>
-        )}
+
+            {canChooseQmkMsysRoot ? (
+              <div className="setup-actions">
+                <button
+                  className="accent-button setup-action setup-primary"
+                  type="button"
+                  disabled={busyAction !== null}
+                  onClick={onSelectQmkMsysRoot}
+                >
+                  {busyAction === "qmk-msys" ? (
+                    <LoaderCircle className="spin" />
+                  ) : (
+                    <FolderOpen />
+                  )}
+                  {busyAction === "qmk-msys"
+                    ? "Checking folder"
+                    : "Choose QMK MSYS folder"}
+                </button>
+                <button
+                  className="secondary-button setup-action"
+                  type="button"
+                  disabled={busyAction !== null}
+                  onClick={onCheck}
+                >
+                  {busyAction === "source" ? (
+                    <LoaderCircle className="spin" />
+                  ) : (
+                    <RotateCw />
+                  )}
+                  {busyAction === "source" ? "Checking QMK" : actionLabel}
+                </button>
+              </div>
+            ) : (
+              <button
+                className="accent-button setup-action setup-primary"
+                type="button"
+                disabled={busyAction !== null}
+                onClick={sourceRequired ? onDownload : onCheck}
+              >
+                {busyAction ? (
+                  <LoaderCircle className="spin" />
+                ) : (
+                  <SetupActionIcon />
+                )}
+                {busyAction ? "Working" : actionLabel}
+              </button>
+            )}
+            <details className="setup-technical">
+              <summary>Technical details</summary>
+              <pre>{error?.details ?? environment.details}</pre>
+            </details>
+          </div>
+        </section>
       </main>
     </div>
   );

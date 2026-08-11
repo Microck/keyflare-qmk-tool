@@ -141,22 +141,32 @@ function qmkMsysBashPath(root: string): string {
 }
 
 function qmkMsysToolCommands(bashPath: string): ToolCommands {
-  // QMK MSYS does not add its tools to the global Windows PATH. These are the
-  // same environment values used by its official shell_connector.cmd.
+  // QMK MSYS installs qmk outside the standard MSYS path. The interactive QMK
+  // shell adds these values through its startup files, but Keyflare needs a
+  // quiet, deterministic shell that does not print the welcome prompt.
   const env = {
-    CHERE_INVOKING: "1",
     MSYSTEM: "UCRT64",
     MSYS2_PATH_TYPE: "inherit",
   };
+  const qmkMsysPath =
+    "/opt/qmk/bin:/opt/uv/tools/bin:/ucrt64/bin:/usr/local/bin:/usr/bin:/bin:$PATH";
+  const commandPrefix = (tool: "qmk" | "git", processName: string) => [
+    "--noprofile",
+    "--norc",
+    "-c",
+    `export PATH=${qmkMsysPath}; export QMK_DISTRIB_DIR=/opt/qmk; export PYTHONUTF8=1; export MAKE=make; exec ${tool} "$@"`,
+    processName,
+  ];
+
   return {
     qmk: {
       command: bashPath,
-      argsPrefix: ["-lc", 'qmk "$@"', "keyflare-qmk"],
+      argsPrefix: commandPrefix("qmk", "keyflare-qmk"),
       env,
     },
     git: {
       command: bashPath,
-      argsPrefix: ["-lc", 'git "$@"', "keyflare-git"],
+      argsPrefix: commandPrefix("git", "keyflare-git"),
       env,
     },
   };
