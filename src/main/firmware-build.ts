@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import {
   cp,
   mkdir,
@@ -100,20 +100,32 @@ export function resolveToolCommands({
   platform = process.platform,
   qmkMsysRoot,
   systemDrive = process.env.SystemDrive ?? "C:",
+  pathEnv = process.env.PATH ?? "",
   pathExists = existsSync,
+  readTextFile = (path) => readFileSync(path, "utf8"),
 }: {
   platform?: NodeJS.Platform;
   qmkMsysRoot?: string | undefined;
   systemDrive?: string;
+  pathEnv?: string;
   pathExists?: (path: string) => boolean;
+  readTextFile?: (path: string) => string;
 } = {}): ToolCommands {
   if (platform === "win32") {
     const defaultRoot = win32.join(systemDrive, "QMK_MSYS");
-    const defaultBashPath = qmkMsysBashPath(defaultRoot);
-    const root =
-      qmkMsysRoot ?? (pathExists(defaultBashPath) ? defaultRoot : null);
-    if (root) {
-      return qmkMsysToolCommands(qmkMsysBashPath(root));
+    if (qmkMsysRoot) {
+      const installation = inspectQmkMsysRoot(qmkMsysRoot, {
+        pathExists,
+        readTextFile,
+      });
+      return qmkMsysToolCommands({ ...installation, pathEnv });
+    }
+    if (isQmkMsysRoot(defaultRoot, pathExists)) {
+      return qmkMsysToolCommands({
+        root: defaultRoot,
+        msystem: readQmkMsysSystem(defaultRoot, readTextFile),
+        pathEnv,
+      });
     }
   }
 
@@ -125,38 +137,118 @@ export function resolveToolCommands({
 
 export function validateQmkMsysRoot(
   root: string,
-  { pathExists = existsSync }: { pathExists?: (path: string) => boolean } = {},
+  {
+    pathExists = existsSync,
+    readTextFile = (path) => readFileSync(path, "utf8"),
+  }: {
+    pathExists?: (path: string) => boolean;
+    readTextFile?: (path: string) => string;
+  } = {},
 ): string {
-  const normalizedRoot = root.trim();
-  if (!normalizedRoot || !pathExists(qmkMsysBashPath(normalizedRoot))) {
-    throw new Error(
-      "Choose the QMK_MSYS folder that contains usr\\bin\\bash.exe",
-    );
-  }
-  return normalizedRoot;
+  return inspectQmkMsysRoot(root, { pathExists, readTextFile }).root;
 }
 
 function qmkMsysBashPath(root: string): string {
   return win32.join(root, "usr", "bin", "bash.exe");
 }
 
-function qmkMsysToolCommands(bashPath: string): ToolCommands {
-  // QMK MSYS installs qmk outside the standard MSYS path. The interactive QMK
-  // shell adds these values through its startup files, but Keyflare needs a
-  // quiet, deterministic shell that does not print the welcome prompt.
-  const env = {
-    MSYSTEM: "UCRT64",
-    MSYS2_PATH_TYPE: "inherit",
+function isQmkMsysRoot(
+  root: string,
+  pathExists: (path: string) => boolean,
+): boolean {
+  return [
+    qmkMsysBashPath(root),
+    win32.join(root, "etc", "qmk-release"),
+    win32.join(root, "shell_connector.cmd"),
+  ].every(pathExists);
+}
+
+type QmkMsysSystem = "MINGW64" | "UCRT64";
+
+function inspectQmkMsysRoot(
+  root: string,
+  {
+    pathExists,
+    readTextFile,
+  }: {
+    pathExists: (path: string) => boolean;
+    readTextFile: (path: string) => string;
+  },
+): { root: string; msystem: QmkMsysSystem } {
+  const normalizedRoot = root.trim();
+  if (!normalizedRoot || !isQmkMsysRoot(normalizedRoot, pathExists)) {
+    throw new Error(
+      "Choose the QMK MSYS installation folder. It must contain shell_connector.cmd, etc\\qmk-release, and usr\\bin\\bash.exe",
+    );
+  }
+  return {
+    root: normalizedRoot,
+    msystem: readQmkMsysSystem(normalizedRoot, readTextFile),
   };
-  const qmkMsysPath =
-    "/opt/qmk/bin:/opt/uv/tools/bin:/ucrt64/bin:/usr/local/bin:/usr/bin:/bin:$PATH";
+}
+
+function readQmkMsysSystem(
+  root: string,
+  readTextFile: (path: string) => string,
+): QmkMsysSystem {
+  const connectorPath = win32.join(root, "shell_connector.cmd");
+  const match = readTextFile(connectorPath).match(
+    /^\s*set\s+MSYSTEM=(MINGW64|UCRT64)\s*$/im,
+  );
+  if (!match) {
+    throw new Error(
+      `${connectorPath} does not declare a supported QMK MSYS environment`,
+    );
+  }
+  return match[1] as QmkMsysSystem;
+}
+
+function qmkMsysToolCommands({
+  root,
+  pathEnv,
+  msystem,
+}: {
+  root: string;
+  pathEnv: string;
+  msystem: QmkMsysSystem;
+}): ToolCommands {
+  const environmentDirectory = msystem.toLowerCase();
+  const qmkCliPaths =
+    msystem === "UCRT64"
+      ? [
+          win32.join(root, "opt", "qmk", "bin"),
+          win32.join(root, "opt", "uv", "tools", "bin"),
+        ]
+      : [];
+  // The Windows PATH must select this installation before Bash starts. If Git
+  // for Windows starts another MSYS runtime first, changing PATH inside Bash is
+  // too late and absolute MSYS paths can resolve against the Git installation.
+  const env = {
+    MSYSTEM: msystem,
+    MSYS2_PATH_TYPE: "inherit",
+    PATH: [
+      ...qmkCliPaths,
+      win32.join(root, environmentDirectory, "bin"),
+      win32.join(root, "usr", "bin"),
+      pathEnv,
+    ]
+      .filter(Boolean)
+      .join(";"),
+  };
+  // Current QMK MSYS installs QMK CLI under /opt. Older official installers
+  // place qmk.exe in the selected MinGW environment and need no extra exports.
+  const setup =
+    msystem === "UCRT64"
+      ? "export PATH=/opt/qmk/bin:/opt/uv/tools/bin:/ucrt64/bin:/usr/local/bin:/usr/bin:/bin:$PATH; export QMK_DISTRIB_DIR=/opt/qmk; "
+      : "";
   const commandPrefix = (tool: "qmk" | "git", processName: string) => [
     "--noprofile",
     "--norc",
     "-c",
-    `export PATH=${qmkMsysPath}; export QMK_DISTRIB_DIR=/opt/qmk; export PYTHONUTF8=1; export MAKE=make; exec ${tool} "$@"`,
+    `${setup}export PYTHONUTF8=1; export MAKE=make; exec ${tool} "$@"`,
     processName,
   ];
+  const bashPath = qmkMsysBashPath(root);
 
   return {
     qmk: {

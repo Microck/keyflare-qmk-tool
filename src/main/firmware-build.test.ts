@@ -45,16 +45,48 @@ describe("resolveToolCommands", () => {
       resolveToolCommands({
         platform: "win32",
         qmkMsysRoot: "D:\\Tools\\QMK_MSYS",
-        pathExists: () => false,
+        readTextFile: () => "set MSYSTEM=MINGW64\r\n",
+        pathEnv: "C:\\Windows\\System32",
+        pathExists: () => true,
       }),
-    ).toMatchObject({
-      qmk: { command: "D:\\Tools\\QMK_MSYS\\usr\\bin\\bash.exe" },
-      git: { command: "D:\\Tools\\QMK_MSYS\\usr\\bin\\bash.exe" },
+    ).toEqual({
+      qmk: {
+        command: "D:\\Tools\\QMK_MSYS\\usr\\bin\\bash.exe",
+        argsPrefix: [
+          "--noprofile",
+          "--norc",
+          "-c",
+          'export PYTHONUTF8=1; export MAKE=make; exec qmk "$@"',
+          "keyflare-qmk",
+        ],
+        env: {
+          MSYSTEM: "MINGW64",
+          MSYS2_PATH_TYPE: "inherit",
+          PATH: "D:\\Tools\\QMK_MSYS\\mingw64\\bin;D:\\Tools\\QMK_MSYS\\usr\\bin;C:\\Windows\\System32",
+        },
+      },
+      git: {
+        command: "D:\\Tools\\QMK_MSYS\\usr\\bin\\bash.exe",
+        argsPrefix: [
+          "--noprofile",
+          "--norc",
+          "-c",
+          'export PYTHONUTF8=1; export MAKE=make; exec git "$@"',
+          "keyflare-git",
+        ],
+        env: {
+          MSYSTEM: "MINGW64",
+          MSYS2_PATH_TYPE: "inherit",
+          PATH: "D:\\Tools\\QMK_MSYS\\mingw64\\bin;D:\\Tools\\QMK_MSYS\\usr\\bin;C:\\Windows\\System32",
+        },
+      },
     });
   });
 
   it("uses the official QMK MSYS shell when it is installed on Windows", () => {
     const bashPath = "C:\\QMK_MSYS\\usr\\bin\\bash.exe";
+    const releasePath = "C:\\QMK_MSYS\\etc\\qmk-release";
+    const connectorPath = "C:\\QMK_MSYS\\shell_connector.cmd";
     const qmkMsysPath =
       "/opt/qmk/bin:/opt/uv/tools/bin:/ucrt64/bin:/usr/local/bin:/usr/bin:/bin:$PATH";
 
@@ -62,7 +94,10 @@ describe("resolveToolCommands", () => {
       resolveToolCommands({
         platform: "win32",
         systemDrive: "C:",
-        pathExists: (path) => path === bashPath,
+        pathEnv: "C:\\Windows\\System32",
+        pathExists: (path) =>
+          [bashPath, releasePath, connectorPath].includes(path),
+        readTextFile: () => "@echo off\r\nset MSYSTEM=UCRT64\r\n",
       }),
     ).toEqual({
       qmk: {
@@ -77,6 +112,7 @@ describe("resolveToolCommands", () => {
         env: {
           MSYSTEM: "UCRT64",
           MSYS2_PATH_TYPE: "inherit",
+          PATH: "C:\\QMK_MSYS\\opt\\qmk\\bin;C:\\QMK_MSYS\\opt\\uv\\tools\\bin;C:\\QMK_MSYS\\ucrt64\\bin;C:\\QMK_MSYS\\usr\\bin;C:\\Windows\\System32",
         },
       },
       git: {
@@ -91,6 +127,7 @@ describe("resolveToolCommands", () => {
         env: {
           MSYSTEM: "UCRT64",
           MSYS2_PATH_TYPE: "inherit",
+          PATH: "C:\\QMK_MSYS\\opt\\qmk\\bin;C:\\QMK_MSYS\\opt\\uv\\tools\\bin;C:\\QMK_MSYS\\ucrt64\\bin;C:\\QMK_MSYS\\usr\\bin;C:\\Windows\\System32",
         },
       },
     });
@@ -108,12 +145,30 @@ describe("resolveToolCommands", () => {
     });
   });
 
+  it("rejects a configured path that is no longer QMK MSYS", () => {
+    expect(() =>
+      resolveToolCommands({
+        platform: "win32",
+        qmkMsysRoot: "D:\\Removed-QMK_MSYS",
+        pathExists: () => false,
+      }),
+    ).toThrow("Choose the QMK MSYS installation folder");
+  });
+
   it("rejects a folder that is not a QMK MSYS installation", () => {
     expect(() =>
       validateQmkMsysRoot("D:\\Wrong", {
         pathExists: () => false,
       }),
-    ).toThrow("Choose the QMK_MSYS folder that contains usr\\bin\\bash.exe");
+    ).toThrow("Choose the QMK MSYS installation folder");
+  });
+
+  it("rejects Git Bash even though it contains usr\\bin\\bash.exe", () => {
+    expect(() =>
+      validateQmkMsysRoot("C:\\Program Files\\Git", {
+        pathExists: (path) => path.endsWith("usr\\bin\\bash.exe"),
+      }),
+    ).toThrow("Choose the QMK MSYS installation folder");
   });
 });
 
@@ -172,6 +227,7 @@ describe("FirmwareBuildModule source setup", () => {
           platform: "win32",
           systemDrive: "C:",
           pathExists: () => qmkMsysInstalled,
+          readTextFile: () => "set MSYSTEM=UCRT64\r\n",
         }),
     });
 
