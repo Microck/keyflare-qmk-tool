@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import {
   cp,
   mkdir,
@@ -9,7 +10,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, join, win32 } from "node:path";
 
 import { z } from "zod";
 
@@ -66,6 +67,17 @@ export interface CommandRunner {
   run(request: CommandRequest): Promise<CommandResult>;
 }
 
+interface ToolCommand {
+  command: string;
+  argsPrefix: string[];
+  env?: NodeJS.ProcessEnv;
+}
+
+interface ToolCommands {
+  qmk: ToolCommand;
+  git: ToolCommand;
+}
+
 export interface BuildResult {
   artifactName: string;
   artifact: Uint8Array;
@@ -79,6 +91,53 @@ export interface FirmwareBuildModuleOptions {
   commandRunner?: CommandRunner;
   gitCommand?: string;
   qmkCommand?: string;
+  toolCommandResolver?: () => ToolCommands;
+}
+
+export function resolveToolCommands({
+  platform = process.platform,
+  systemDrive = process.env.SystemDrive ?? "C:",
+  pathExists = existsSync,
+}: {
+  platform?: NodeJS.Platform;
+  systemDrive?: string;
+  pathExists?: (path: string) => boolean;
+} = {}): ToolCommands {
+  if (platform === "win32") {
+    const bashPath = win32.join(
+      systemDrive,
+      "QMK_MSYS",
+      "usr",
+      "bin",
+      "bash.exe",
+    );
+    if (pathExists(bashPath)) {
+      // QMK MSYS does not add its tools to the global Windows PATH. These are
+      // the same environment values used by its official shell_connector.cmd.
+      const env = {
+        CHERE_INVOKING: "1",
+        MSYSTEM: "UCRT64",
+        MSYS2_PATH_TYPE: "inherit",
+      };
+      return {
+        qmk: {
+          command: bashPath,
+          argsPrefix: ["-lc", 'qmk "$@"', "keyflare-qmk"],
+          env,
+        },
+        git: {
+          command: bashPath,
+          argsPrefix: ["-lc", 'git "$@"', "keyflare-git"],
+          env,
+        },
+      };
+    }
+  }
+
+  return {
+    qmk: { command: "qmk", argsPrefix: [] },
+    git: { command: "git", argsPrefix: [] },
+  };
 }
 
 export function createCommandRunner(): CommandRunner {
@@ -129,9 +188,9 @@ export class FirmwareBuildModule {
   readonly qmkHome: string;
 
   private readonly commandRunner: CommandRunner;
-  private readonly gitCommand: string;
   private readonly moduleSourcePath: string;
-  private readonly qmkCommand: string;
+  private readonly toolCommandOverrides: Partial<ToolCommands>;
+  private readonly toolCommandResolver: () => ToolCommands;
   private readonly workRoot: string;
   private buildInProgress = false;
   private inspectedTarget: TargetCapabilities | null = null;
@@ -140,28 +199,53 @@ export class FirmwareBuildModule {
     appDataPath,
     moduleSourcePath,
     commandRunner = createCommandRunner(),
-    gitCommand = "git",
-    qmkCommand = "qmk",
+    gitCommand,
+    qmkCommand,
+    toolCommandResolver = resolveToolCommands,
   }: FirmwareBuildModuleOptions) {
     this.qmkHome = join(appDataPath, "qmk_firmware");
     // QMK userspaces must sit outside qmk_firmware or QMK classifies their
     // community modules as firmware-owned paths and cannot resolve them.
     this.workRoot = join(appDataPath, "keyflare-work");
     this.commandRunner = commandRunner;
-    this.gitCommand = gitCommand;
     this.moduleSourcePath = moduleSourcePath;
-    this.qmkCommand = qmkCommand;
+    this.toolCommandOverrides = {};
+    if (gitCommand) {
+      this.toolCommandOverrides.git = { command: gitCommand, argsPrefix: [] };
+    }
+    if (qmkCommand) {
+      this.toolCommandOverrides.qmk = { command: qmkCommand, argsPrefix: [] };
+    }
+    this.toolCommandResolver = toolCommandResolver;
+  }
+
+  private runTool(
+    toolName: keyof ToolCommands,
+    request: Omit<CommandRequest, "command" | "args"> & { args: string[] },
+  ): Promise<CommandResult> {
+    // Resolve default tools for every action so the setup screen can detect a
+    // QMK MSYS installation without requiring the user to restart Keyflare.
+    const tool =
+      this.toolCommandOverrides[toolName] ??
+      this.toolCommandResolver()[toolName];
+    const commandRequest: CommandRequest = {
+      ...request,
+      command: tool.command,
+      args: [...tool.argsPrefix, ...request.args],
+    };
+    if (tool.env || request.env) {
+      commandRequest.env = { ...tool.env, ...request.env };
+    }
+    return this.commandRunner.run(commandRequest);
   }
 
   async inspectEnvironment(): Promise<EnvironmentStatus> {
     try {
       const checks = await Promise.allSettled([
-        this.commandRunner.run({
-          command: this.qmkCommand,
+        this.runTool("qmk", {
           args: ["--version"],
         }),
-        this.commandRunner.run({
-          command: this.gitCommand,
+        this.runTool("git", {
           args: ["--version"],
         }),
       ]);
@@ -193,16 +277,14 @@ export class FirmwareBuildModule {
 
     try {
       const [doctor, revision] = await Promise.all([
-        this.commandRunner.run({
-          command: this.qmkCommand,
+        this.runTool("qmk", {
           args: ["doctor"],
           cwd: this.qmkHome,
           // QMK uses exit 1 for minor warnings such as absent flashing udev rules.
           // Those warnings do not prevent Keyflare's compile-only workflow.
           acceptedExitCodes: [0, 1],
         }),
-        this.commandRunner.run({
-          command: this.gitCommand,
+        this.runTool("git", {
           args: ["rev-parse", "HEAD"],
           cwd: this.qmkHome,
         }),
@@ -244,8 +326,7 @@ export class FirmwareBuildModule {
     const hasRepository = await pathExists(gitDirectory);
 
     if (!hasRepository) {
-      await this.commandRunner.run({
-        command: this.gitCommand,
+      await this.runTool("git", {
         args: ["init"],
         cwd: this.qmkHome,
       });
@@ -253,46 +334,39 @@ export class FirmwareBuildModule {
 
     // The checkout belongs to Keyflare, so keep one canonical upstream URL.
     // Re-establishing it also repairs setup interrupted between init and remote add.
-    const remotes = await this.commandRunner.run({
-      command: this.gitCommand,
+    const remotes = await this.runTool("git", {
       args: ["remote"],
       cwd: this.qmkHome,
     });
     if (remotes.stdout.split(/\r?\n/u).includes("origin")) {
-      await this.commandRunner.run({
-        command: this.gitCommand,
+      await this.runTool("git", {
         args: ["remote", "set-url", "origin", qmkFirmwareUrl],
         cwd: this.qmkHome,
       });
     } else {
-      await this.commandRunner.run({
-        command: this.gitCommand,
+      await this.runTool("git", {
         args: ["remote", "add", "origin", qmkFirmwareUrl],
         cwd: this.qmkHome,
       });
     }
 
-    await this.commandRunner.run({
-      command: this.gitCommand,
+    await this.runTool("git", {
       args: ["fetch", "--depth", "1", "origin", qmkFirmwareRef],
       cwd: this.qmkHome,
     });
-    await this.commandRunner.run({
-      command: this.gitCommand,
+    await this.runTool("git", {
       args: ["checkout", "--detach", qmkFirmwareRef],
       cwd: this.qmkHome,
     });
 
-    await this.commandRunner.run({
-      command: this.qmkCommand,
+    await this.runTool("qmk", {
       args: ["git-submodule", "--sync"],
       cwd: this.qmkHome,
     });
   }
 
   async listTargets(): Promise<string[]> {
-    const result = await this.commandRunner.run({
-      command: this.qmkCommand,
+    const result = await this.runTool("qmk", {
       args: ["list-keyboards"],
       cwd: this.qmkHome,
     });
@@ -304,8 +378,7 @@ export class FirmwareBuildModule {
       return this.inspectedTarget;
     }
 
-    const result = await this.commandRunner.run({
-      command: this.qmkCommand,
+    const result = await this.runTool("qmk", {
       args: ["info", "-kb", target, "-f", "json"],
       cwd: this.qmkHome,
     });
@@ -353,8 +426,7 @@ export class FirmwareBuildModule {
         `${JSON.stringify({ ...keymap, keymap: buildKeymapName }, null, 2)}\n`,
         "utf8",
       );
-      const output = await this.commandRunner.run({
-        command: this.qmkCommand,
+      const output = await this.runTool("qmk", {
         args: ["compile", keymapPath, "-e", `QMK_USERSPACE=${workDirectory}`],
         cwd: this.qmkHome,
         // QMK's Python layer detects modules from the environment. The -e
@@ -400,8 +472,7 @@ export class FirmwareBuildModule {
     }
 
     const outputPath = join(workDirectory, "default-keymap.json");
-    await this.commandRunner.run({
-      command: this.qmkCommand,
+    await this.runTool("qmk", {
       args: ["c2json", "-kb", target, "-km", "default", "-o", outputPath],
       cwd: this.qmkHome,
     });

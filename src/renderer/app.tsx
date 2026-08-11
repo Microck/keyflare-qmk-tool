@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Box,
   Check,
   ChevronRight,
-  Cpu,
   FileJson,
-  Flame,
   Keyboard,
   LoaderCircle,
+  Maximize2,
+  Minimize2,
+  Minus,
+  RotateCw,
   Save,
-  ShieldCheck,
-  Wrench,
+  Search,
+  SlidersHorizontal,
+  X,
+  Zap,
 } from "lucide-react";
 
 import type {
@@ -204,12 +207,13 @@ export function App({ api }: { api: KeyflareApi }) {
   }
 
   if (!environment) {
-    return <LoadingScreen error={error} />;
+    return <LoadingScreen api={api} error={error} />;
   }
 
   if (environment.kind !== "ready") {
     return (
       <SetupScreen
+        api={api}
         environment={environment}
         busy={busyAction === "source"}
         error={error}
@@ -221,46 +225,71 @@ export function App({ api }: { api: KeyflareApi }) {
 
   return (
     <div className="app-shell">
-      <AppHeader />
+      <TitleBar api={api} qmkRef={environment.qmkRef} />
       <main className="workspace">
-        <section className="intro" aria-labelledby="page-title">
-          <div>
-            <p className="eyebrow">Firmware configurator</p>
-            <h1 id="page-title">Build reactive lighting</h1>
-            <p>
-              Choose an upstream QMK keyboard. Keyflare only shows lighting
-              channels that its metadata declares.
-            </p>
+        <section className="keyboard-workspace" aria-labelledby="page-title">
+          <div className="keyboard-heading">
+            <div>
+              <span className="workspace-kicker">QMK target</span>
+              <h1 id="page-title">
+                {capabilities?.keyboardName ?? "Choose a keyboard"}
+              </h1>
+            </div>
+            {capabilities && capabilities.layouts.length > 1 && (
+              <label className="layout-select">
+                <span>Layout</span>
+                <select
+                  value={layoutName}
+                  onChange={(event) => setLayoutName(event.target.value)}
+                >
+                  {capabilities.layouts.map((layout) => (
+                    <option key={layout.name}>{layout.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
-          <div className="environment-pill">
-            <ShieldCheck aria-hidden="true" />
-            <span>QMK {environment.qmkRef.slice(0, 12)}</span>
-          </div>
+          <KeyboardPreview layout={selectedLayout} />
         </section>
 
-        <div className="configuration-grid">
-          <aside className="control-panel" aria-label="Firmware configuration">
-            <Step
-              heading="Keyboard"
-              number="1"
-              complete={Boolean(capabilities)}
-            >
+        <section
+          className="configuration-dock"
+          aria-label="Firmware configuration"
+        >
+          <div className="tool-rail" aria-hidden="true">
+            <span className="tool-button selected">
+              <Keyboard aria-hidden="true" />
+            </span>
+            <span className="tool-button">
+              <Zap aria-hidden="true" />
+            </span>
+            <span className="tool-button">
+              <SlidersHorizontal aria-hidden="true" />
+            </span>
+          </div>
+
+          <section className="dock-pane keyboard-pane">
+            <PaneHeading title="Keyboard" complete={Boolean(capabilities)} />
+            <div className="pane-content">
               <label className="field-label" htmlFor="target-select">
                 Keyboard target
               </label>
-              <input
-                id="target-select"
-                list="target-options"
-                placeholder="Search upstream QMK targets"
-                autoComplete="off"
-                value={target}
-                onChange={(event) => {
-                  setTarget(event.target.value);
-                  setCapabilities(null);
-                  setChannels([]);
-                  setNotice(null);
-                }}
-              />
+              <div className="target-input">
+                <Search aria-hidden="true" />
+                <input
+                  id="target-select"
+                  list="target-options"
+                  placeholder="Search QMK targets"
+                  autoComplete="off"
+                  value={target}
+                  onChange={(event) => {
+                    setTarget(event.target.value);
+                    setCapabilities(null);
+                    setChannels([]);
+                    setNotice(null);
+                  }}
+                />
+              </div>
               <datalist id="target-options">
                 {targetSuggestions.map((availableTarget) => (
                   <option key={availableTarget} value={availableTarget}>
@@ -269,7 +298,7 @@ export function App({ api }: { api: KeyflareApi }) {
                 ))}
               </datalist>
               <button
-                className="secondary-button full-width"
+                className="accent-button full-width"
                 type="button"
                 disabled={!targetExists || Boolean(busyAction)}
                 onClick={loadTarget}
@@ -283,13 +312,65 @@ export function App({ api }: { api: KeyflareApi }) {
                   ? "Reading QMK metadata"
                   : "Load keyboard"}
               </button>
-            </Step>
+            </div>
+          </section>
 
-            <Step
-              heading="Keymap"
-              number="2"
+          <section className="dock-pane channel-pane">
+            <PaneHeading
+              title="Reactive outputs"
+              complete={channels.length > 0}
+            />
+            <div className="pane-content">
+              {!capabilities ? (
+                <p className="muted-copy">
+                  Load a keyboard to see its declared outputs.
+                </p>
+              ) : capabilities.channels.length === 0 ? (
+                <div className="empty-channels">
+                  <p>No supported outputs</p>
+                  <small>
+                    This target declares no standard backlight or lock indicator
+                    pins.
+                  </small>
+                </div>
+              ) : (
+                <fieldset className="channel-list">
+                  <legend>Select outputs</legend>
+                  {capabilities.channels.map((channel) => (
+                    <label className="channel-row" key={channel.id}>
+                      <input
+                        type="checkbox"
+                        aria-label={channel.label}
+                        checked={channels.includes(channel.id)}
+                        onChange={() => toggleChannel(channel.id)}
+                      />
+                      <span className="channel-mark">
+                        <Check aria-hidden="true" />
+                      </span>
+                      <span>
+                        <strong>{channel.label}</strong>
+                        <small>
+                          {channel.kind === "backlight"
+                            ? "Keyboard backlight"
+                            : "Lock indicator"}
+                        </small>
+                      </span>
+                    </label>
+                  ))}
+                </fieldset>
+              )}
+              <p className="hardware-note">
+                The installed LED decides the color.
+              </p>
+            </div>
+          </section>
+
+          <section className="dock-pane build-pane">
+            <PaneHeading
+              title="Keymap and build"
               complete={keymapMode === "default" || Boolean(importedKeymapName)}
-            >
+            />
+            <div className="pane-content">
               <label className="choice-row">
                 <input
                   type="radio"
@@ -328,98 +409,27 @@ export function App({ api }: { api: KeyflareApi }) {
                   <ChevronRight aria-hidden="true" />
                 </button>
               )}
-            </Step>
-
-            <Step
-              heading="Reactive channels"
-              number="3"
-              complete={channels.length > 0}
-            >
-              {!capabilities ? (
-                <p className="muted-copy">
-                  Load a keyboard to see its declared channels.
-                </p>
-              ) : capabilities.channels.length === 0 ? (
-                <div className="empty-channels">
-                  <p>No supported lighting channels</p>
-                  <small>
-                    This target does not declare standard backlight or indicator
-                    pins in QMK.
-                  </small>
-                </div>
-              ) : (
-                <fieldset className="channel-list">
-                  <legend>Select one or more channels</legend>
-                  {capabilities.channels.map((channel) => (
-                    <label className="channel-row" key={channel.id}>
-                      <input
-                        type="checkbox"
-                        aria-label={channel.label}
-                        checked={channels.includes(channel.id)}
-                        onChange={() => toggleChannel(channel.id)}
-                      />
-                      <span className="channel-mark">
-                        <Check aria-hidden="true" />
-                      </span>
-                      <span>
-                        <strong>{channel.label}</strong>
-                        <small>
-                          {channel.kind === "backlight"
-                            ? "Keyboard backlight"
-                            : "Lock LED"}
-                        </small>
-                      </span>
-                    </label>
-                  ))}
-                </fieldset>
-              )}
-              <p className="hardware-note">
-                Keyflare changes only on and off state. Your installed LED
-                determines the color.
-              </p>
-            </Step>
-          </aside>
-
-          <section className="preview-panel" aria-labelledby="preview-title">
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">Keyboard preview</p>
-                <h2 id="preview-title">
-                  {capabilities?.keyboardName ?? "No keyboard loaded"}
-                </h2>
-              </div>
-              {capabilities && capabilities.layouts.length > 1 && (
-                <label className="layout-select">
-                  <span>Layout</span>
-                  <select
-                    value={layoutName}
-                    onChange={(event) => setLayoutName(event.target.value)}
-                  >
-                    {capabilities.layouts.map((layout) => (
-                      <option key={layout.name}>{layout.name}</option>
-                    ))}
-                  </select>
-                </label>
-              )}
-            </div>
-            <KeyboardPreview layout={selectedLayout} />
-            <div className="preview-explanation">
-              <Cpu aria-hidden="true" />
-              <div>
-                <strong>How the firmware reacts</strong>
-                <p>
-                  The selected channels turn on while at least one physical key
-                  is held. QMK restores their prior state after the last key is
-                  released.
-                </p>
-              </div>
+              <button
+                className="build-button"
+                type="button"
+                disabled={!canBuild}
+                onClick={buildFirmware}
+              >
+                {busyAction === "build" ? (
+                  <LoaderCircle className="spin" />
+                ) : (
+                  <Save />
+                )}
+                {busyAction === "build"
+                  ? "Building firmware"
+                  : "Build firmware"}
+              </button>
             </div>
           </section>
-        </div>
+        </section>
       </main>
-
-      <footer className="build-bar">
-        <div className="build-status" aria-live="polite">
+      <footer className="status-bar" aria-live="polite">
+        <div className="build-status">
           {error ? (
             <ErrorNotice error={error} />
           ) : notice ? (
@@ -437,63 +447,74 @@ export function App({ api }: { api: KeyflareApi }) {
             </p>
           )}
         </div>
-        <button
-          className="primary-button"
-          type="button"
-          disabled={!canBuild}
-          onClick={buildFirmware}
-        >
-          {busyAction === "build" ? (
-            <LoaderCircle className="spin" />
-          ) : (
-            <Save />
-          )}
-          {busyAction === "build" ? "Building firmware" : "Build firmware"}
-        </button>
+        <span>Reactive on key press, color set by hardware</span>
       </footer>
     </div>
   );
 }
 
-function AppHeader() {
+function TitleBar({ api, qmkRef }: { api: KeyflareApi; qmkRef?: string }) {
+  const [maximized, setMaximized] = useState(false);
+
+  useEffect(() => {
+    const stopListening = api.onWindowMaximizedChange(setMaximized);
+    void api.isWindowMaximized().then(setMaximized);
+    return stopListening;
+  }, [api]);
+
   return (
-    <header className="app-header">
-      <div className="brand">
-        <span className="brand-mark">
-          <Flame aria-hidden="true" />
+    <header className="title-bar">
+      <div className="app-name">KEYFLARE</div>
+      <div className="top-navigation" aria-label="Primary navigation">
+        <span className="top-navigation-item active">
+          <Keyboard aria-hidden="true" />
+          <span>Configure</span>
         </span>
-        <span>Keyflare</span>
       </div>
-      <nav aria-label="Primary navigation">
-        <span className="active-nav">
-          <Wrench aria-hidden="true" /> Configure
-        </span>
-      </nav>
+      <div className="title-actions">
+        {qmkRef && (
+          <span className="qmk-version">QMK {qmkRef.slice(0, 12)}</span>
+        )}
+        <button
+          type="button"
+          aria-label="Minimize"
+          onClick={() => void api.minimizeWindow()}
+        >
+          <Minus />
+        </button>
+        <button
+          type="button"
+          aria-label={maximized ? "Restore" : "Maximize"}
+          title={maximized ? "Restore" : "Maximize"}
+          onClick={() => void api.toggleMaximizeWindow()}
+        >
+          {maximized ? <Minimize2 /> : <Maximize2 />}
+        </button>
+        <button
+          className="close-window"
+          type="button"
+          aria-label="Close"
+          onClick={() => void api.closeWindow()}
+        >
+          <X />
+        </button>
+      </div>
     </header>
   );
 }
 
-function Step({
-  heading,
-  number,
+function PaneHeading({
+  title,
   complete,
-  children,
 }: {
-  heading: string;
-  number: string;
+  title: string;
   complete: boolean;
-  children: React.ReactNode;
 }) {
   return (
-    <section className="step-section">
-      <div className="step-heading">
-        <span className={complete ? "step-number complete" : "step-number"}>
-          {complete ? <Check aria-hidden="true" /> : number}
-        </span>
-        <h2>{heading}</h2>
-      </div>
-      <div className="step-content">{children}</div>
-    </section>
+    <header className="pane-heading">
+      <h2>{title}</h2>
+      {complete && <Check role="img" aria-label={`${title} complete`} />}
+    </header>
   );
 }
 
@@ -501,7 +522,7 @@ function KeyboardPreview({ layout }: { layout: KeyboardLayout | null }) {
   if (!layout) {
     return (
       <div className="keyboard-empty" aria-label="Keyboard layout preview">
-        <Box aria-hidden="true" />
+        <Keyboard aria-hidden="true" />
         <p>Load a keyboard to preview its QMK layout.</p>
       </div>
     );
@@ -549,28 +570,37 @@ function KeyboardPreview({ layout }: { layout: KeyboardLayout | null }) {
   );
 }
 
-function LoadingScreen({ error }: { error: UiError | null }) {
+function LoadingScreen({
+  api,
+  error,
+}: {
+  api: KeyflareApi;
+  error: UiError | null;
+}) {
   return (
     <div className="setup-shell">
-      <div className="setup-card" aria-live="polite">
-        <LoaderCircle className="setup-icon spin" aria-hidden="true" />
+      <TitleBar api={api} />
+      <main className="setup-content" aria-live="polite">
+        <LoaderCircle className="setup-symbol spin" aria-hidden="true" />
         <h1>Checking QMK</h1>
         <p>
           {error?.details ??
             "Keyflare is checking the local build environment."}
         </p>
-      </div>
+      </main>
     </div>
   );
 }
 
 function SetupScreen({
+  api,
   environment,
   busy,
   error,
   onDownload,
   onCheck,
 }: {
+  api: KeyflareApi;
   environment: EnvironmentStatus;
   busy: boolean;
   error: UiError | null;
@@ -581,7 +611,7 @@ function SetupScreen({
   const toolchainRequired = environment.kind === "toolchain-required";
   let heading = "Repair the QMK build environment";
   let actionLabel = "Check QMK setup again";
-  let SetupActionIcon = ShieldCheck;
+  let SetupActionIcon = RotateCw;
   if (sourceRequired) {
     heading = "Download Keyflare's QMK source";
     actionLabel = "Download QMK source";
@@ -592,14 +622,12 @@ function SetupScreen({
 
   return (
     <div className="setup-shell">
-      <header className="setup-brand">
-        <Flame aria-hidden="true" /> Keyflare
-      </header>
-      <main className="setup-card">
-        <span className="setup-icon">
-          <Wrench aria-hidden="true" />
+      <TitleBar api={api} />
+      <main className="setup-content">
+        <span className="setup-symbol">
+          <SlidersHorizontal aria-hidden="true" />
         </span>
-        <p className="eyebrow">One-time setup</p>
+        <p className="workspace-kicker">One-time setup</p>
         <h1>{heading}</h1>
         {sourceRequired ? (
           <p>
@@ -614,7 +642,8 @@ function SetupScreen({
             </p>
             <ul className="platform-list">
               <li>
-                <strong>Windows:</strong> install and open QMK MSYS.
+                <strong>Windows:</strong> Keyflare uses the standard C:\QMK_MSYS
+                install automatically. Run qmk setup there once.
               </li>
               <li>
                 <strong>macOS:</strong> install QMK with Homebrew, then run QMK
@@ -632,7 +661,7 @@ function SetupScreen({
           <code>{error?.details ?? environment.details}</code>
         </div>
         <button
-          className="primary-button setup-action"
+          className="accent-button setup-action"
           type="button"
           disabled={busy}
           onClick={sourceRequired ? onDownload : onCheck}

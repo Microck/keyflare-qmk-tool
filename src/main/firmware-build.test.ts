@@ -13,6 +13,7 @@ import {
   findFirmwareArtifact,
   parseKeyboardTargets,
   prepareKeymapDocument,
+  resolveToolCommands,
 } from "./firmware-build";
 
 const temporaryDirectories: string[] = [];
@@ -34,6 +35,51 @@ describe("createCommandRunner", () => {
         acceptedExitCodes: [0, 1],
       }),
     ).resolves.toEqual({ stdout: "minor warning", stderr: "" });
+  });
+});
+
+describe("resolveToolCommands", () => {
+  it("uses the official QMK MSYS shell when it is installed on Windows", () => {
+    const bashPath = "C:\\QMK_MSYS\\usr\\bin\\bash.exe";
+
+    expect(
+      resolveToolCommands({
+        platform: "win32",
+        systemDrive: "C:",
+        pathExists: (path) => path === bashPath,
+      }),
+    ).toEqual({
+      qmk: {
+        command: bashPath,
+        argsPrefix: ["-lc", 'qmk "$@"', "keyflare-qmk"],
+        env: {
+          CHERE_INVOKING: "1",
+          MSYSTEM: "UCRT64",
+          MSYS2_PATH_TYPE: "inherit",
+        },
+      },
+      git: {
+        command: bashPath,
+        argsPrefix: ["-lc", 'git "$@"', "keyflare-git"],
+        env: {
+          CHERE_INVOKING: "1",
+          MSYSTEM: "UCRT64",
+          MSYS2_PATH_TYPE: "inherit",
+        },
+      },
+    });
+  });
+
+  it("uses commands from PATH when QMK MSYS is not installed", () => {
+    expect(
+      resolveToolCommands({
+        platform: "win32",
+        pathExists: () => false,
+      }),
+    ).toEqual({
+      qmk: { command: "qmk", argsPrefix: [] },
+      git: { command: "git", argsPrefix: [] },
+    });
   });
 });
 
@@ -78,6 +124,34 @@ describe("parseKeyboardTargets", () => {
 });
 
 describe("FirmwareBuildModule source setup", () => {
+  it("detects QMK MSYS after installation without an app restart", async () => {
+    const appDataPath = await mkdtemp(join(tmpdir(), "keyflare-retry-"));
+    temporaryDirectories.push(appDataPath);
+    const runner = new RecordingCommandRunner();
+    let qmkMsysInstalled = false;
+    const builder = new FirmwareBuildModule({
+      appDataPath,
+      moduleSourcePath: "/unused-in-this-test",
+      commandRunner: runner,
+      toolCommandResolver: () =>
+        resolveToolCommands({
+          platform: "win32",
+          systemDrive: "C:",
+          pathExists: () => qmkMsysInstalled,
+        }),
+    });
+
+    await builder.inspectEnvironment();
+    qmkMsysInstalled = true;
+    await builder.inspectEnvironment();
+
+    expect(runner.requests[0]).toMatchObject({ command: "qmk" });
+    expect(runner.requests.at(-2)).toMatchObject({
+      command: "C:\\QMK_MSYS\\usr\\bin\\bash.exe",
+      args: ["-lc", 'qmk "$@"', "keyflare-qmk", "--version"],
+    });
+  });
+
   it("synchronizes the pinned checkout submodules", async () => {
     const appDataPath = await mkdtemp(join(tmpdir(), "keyflare-source-"));
     temporaryDirectories.push(appDataPath);

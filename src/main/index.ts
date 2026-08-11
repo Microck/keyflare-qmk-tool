@@ -5,6 +5,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  Menu,
   type IpcMainInvokeEvent,
 } from "electron";
 
@@ -80,6 +81,20 @@ function registerIpc(service: KeyflareService): void {
       (suggestedName) => chooseArtifactDestination(parent, suggestedName),
     );
   });
+  ipcMain.handle(ipcChannels.isWindowMaximized, (event) =>
+    getInvokingWindow(event).isMaximized(),
+  );
+  ipcMain.handle(ipcChannels.minimizeWindow, (event) => {
+    getInvokingWindow(event).minimize();
+  });
+  ipcMain.handle(ipcChannels.toggleMaximizeWindow, (event) => {
+    const window = getInvokingWindow(event);
+    if (window.isMaximized()) window.unmaximize();
+    else window.maximize();
+  });
+  ipcMain.handle(ipcChannels.closeWindow, (event) => {
+    getInvokingWindow(event).close();
+  });
 }
 
 function createWindow(): void {
@@ -88,8 +103,10 @@ function createWindow(): void {
     height: 780,
     minWidth: 900,
     minHeight: 640,
-    backgroundColor: "#171717",
+    backgroundColor: "#1d1b1b",
     title: "Keyflare",
+    frame: false,
+    autoHideMenuBar: true,
     show: false,
     webPreferences: {
       preload: join(__dirname, "../preload/index.cjs"),
@@ -99,6 +116,12 @@ function createWindow(): void {
     },
   });
   mainWindow.on("ready-to-show", () => mainWindow?.show());
+  mainWindow.on("maximize", () =>
+    mainWindow?.webContents.send(ipcChannels.windowMaximizedChanged, true),
+  );
+  mainWindow.on("unmaximize", () =>
+    mainWindow?.webContents.send(ipcChannels.windowMaximizedChanged, false),
+  );
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -118,6 +141,17 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // macOS routes standard edit shortcuts through its native application menu.
+  // These menus stay in the system menu bar, not inside the frameless window.
+  Menu.setApplicationMenu(
+    process.platform === "darwin"
+      ? Menu.buildFromTemplate([
+          { role: "appMenu" },
+          { role: "editMenu" },
+          { role: "windowMenu" },
+        ])
+      : null,
+  );
   registerIpc(createService());
   createWindow();
   app.on("activate", () => {

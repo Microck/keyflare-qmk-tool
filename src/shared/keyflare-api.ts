@@ -33,4 +33,9 @@ export interface KeyflareApi {
   inspectTarget(target: string): Promise<TargetCapabilities>;
   selectKeymap(): Promise<KeymapSelection | null>;
   buildAndSave(input: BuildAndSaveInput): Promise<SaveResult>;
+  isWindowMaximized(): Promise<boolean>;
+  onWindowMaximizedChange(listener: (maximized: boolean) => void): () => void;
+  minimizeWindow(): Promise<void>;
+  toggleMaximizeWindow(): Promise<void>;
+  closeWindow(): Promise<void>;
 }
