@@ -151,12 +151,19 @@ function registerIpc({
 }
 
 function createWindow(): void {
+  const iconPath = app.isPackaged
+    ? join(process.resourcesPath, "icon.png")
+    : join(app.getAppPath(), "build", "icon.png");
+  if (process.platform === "darwin") {
+    app.dock?.setIcon(iconPath);
+  }
   mainWindow = new BrowserWindow({
     width: 1180,
     height: 780,
     minWidth: 900,
     minHeight: 640,
     backgroundColor: "#1d1b1b",
+    icon: iconPath,
     title: "Keyflare",
     frame: false,
     autoHideMenuBar: true,

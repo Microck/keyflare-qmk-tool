@@ -11,9 +11,7 @@ import {
   Minus,
   RotateCw,
   Save,
-  SlidersHorizontal,
   X,
-  Zap,
 } from "lucide-react";
 
 import type {
@@ -290,18 +288,6 @@ export function App({ api }: { api: KeyflareApi }) {
           className="configuration-dock"
           aria-label="Firmware configuration"
         >
-          <div className="tool-rail" aria-hidden="true">
-            <span className="tool-button selected">
-              <Keyboard aria-hidden="true" />
-            </span>
-            <span className="tool-button">
-              <Zap aria-hidden="true" />
-            </span>
-            <span className="tool-button">
-              <SlidersHorizontal aria-hidden="true" />
-            </span>
-          </div>
-
           <section className="dock-pane keyboard-pane">
             <PaneHeading title="Keyboard" complete={Boolean(capabilities)} />
             <div className="pane-content">
