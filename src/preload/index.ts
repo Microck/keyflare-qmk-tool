@@ -10,6 +10,7 @@ const keyflare: KeyflareApi = {
   inspectTarget: (target) =>
     ipcRenderer.invoke(ipcChannels.inspectTarget, target),
   selectKeymap: () => ipcRenderer.invoke(ipcChannels.selectKeymap),
+  selectQmkMsysRoot: () => ipcRenderer.invoke(ipcChannels.selectQmkMsysRoot),
   buildAndSave: (input) => ipcRenderer.invoke(ipcChannels.buildAndSave, input),
   isWindowMaximized: () => ipcRenderer.invoke(ipcChannels.isWindowMaximized),
   onWindowMaximizedChange: (listener) => {

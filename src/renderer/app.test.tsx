@@ -15,6 +15,7 @@ import { App } from "./app";
 
 const readyEnvironment: EnvironmentStatus = {
   kind: "ready",
+  canSelectQmkMsysRoot: false,
   summary: "QMK build environment ready",
   details: "qmk doctor passed.",
   qmkHome: "/app-data/qmk_firmware",
@@ -40,6 +41,7 @@ const scrollLockOnlyTarget: TargetCapabilities = {
 
 class InMemoryKeyflareApi implements KeyflareApi {
   readonly builds: BuildAndSaveInput[] = [];
+  readonly qmkMsysSelections: string[] = [];
   readonly windowCalls: string[] = [];
   private maximized = false;
   private readonly maximizeListeners = new Set<(maximized: boolean) => void>();
@@ -78,6 +80,12 @@ class InMemoryKeyflareApi implements KeyflareApi {
       fileName: "test_scroll_pad_default.hex",
       savedPath: "/firmware/test_scroll_pad_default.hex",
     };
+  }
+
+  async selectQmkMsysRoot(): Promise<EnvironmentStatus | null> {
+    this.qmkMsysSelections.push("selected");
+    this.environment = readyEnvironment;
+    return this.environment;
   }
 
   async isWindowMaximized(): Promise<boolean> {
@@ -145,6 +153,43 @@ describe("Keyflare", () => {
     expect(
       screen.queryByRole("button", { name: "Build firmware" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Choose QMK MSYS folder" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lets Windows users select a custom QMK MSYS folder", async () => {
+    const api = new InMemoryKeyflareApi({
+      ...readyEnvironment,
+      kind: "toolchain-required",
+      canSelectQmkMsysRoot: true,
+      summary: "Install the supported QMK build environment",
+      details: "qmk was not found",
+    });
+    const user = userEvent.setup();
+    render(<App api={api} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Choose QMK MSYS folder" }),
+    );
+
+    expect(api.qmkMsysSelections).toEqual(["selected"]);
+    expect(await screen.findByLabelText("Keyboard target")).toBeInTheDocument();
+  });
+
+  it("lets Windows users replace an unhealthy QMK MSYS folder", async () => {
+    const api = new InMemoryKeyflareApi({
+      ...readyEnvironment,
+      kind: "unhealthy",
+      canSelectQmkMsysRoot: true,
+      summary: "QMK found a build-environment problem",
+      details: "qmk doctor failed",
+    });
+    render(<App api={api} />);
+
+    expect(
+      await screen.findByRole("button", { name: "Choose QMK MSYS folder" }),
+    ).toBeInTheDocument();
   });
 
   it("downloads the pinned source before showing the configuration flow", async () => {

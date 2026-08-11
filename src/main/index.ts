@@ -14,21 +14,35 @@ import {
   inspectTargetInputSchema,
   ipcChannels,
 } from "../shared/keyflare-api";
-import { KeyflareService } from "./app-service";
+import { KeyflareService, readQmkMsysRootSetting } from "./app-service";
 import { FirmwareBuildModule } from "./firmware-build";
 
 let mainWindow: BrowserWindow | null = null;
+const qmkMsysRootSettingName = "qmk-msys-root.txt";
 
-function createService(): KeyflareService {
+async function createService(): Promise<{
+  service: KeyflareService;
+  qmkMsysRootSettingPath: string;
+}> {
+  const appDataPath = app.getPath("userData");
+  const qmkMsysRootSettingPath = join(appDataPath, qmkMsysRootSettingName);
+  const qmkMsysRoot =
+    process.platform === "win32"
+      ? await readQmkMsysRootSetting(qmkMsysRootSettingPath)
+      : undefined;
   const moduleSourcePath = app.isPackaged
     ? join(process.resourcesPath, "qmk-module", "keyflare", "reactive")
     : join(app.getAppPath(), "resources", "qmk-module", "keyflare", "reactive");
   const builder = new FirmwareBuildModule({
-    appDataPath: app.getPath("userData"),
+    appDataPath,
     moduleSourcePath,
+    ...(qmkMsysRoot ? { qmkMsysRoot } : {}),
   });
 
-  return new KeyflareService({ builder });
+  return {
+    service: new KeyflareService({ builder }),
+    qmkMsysRootSettingPath,
+  };
 }
 
 function getInvokingWindow(event: IpcMainInvokeEvent): BrowserWindow {
@@ -48,6 +62,19 @@ async function chooseKeymap(parent: BrowserWindow): Promise<string | null> {
   return selection.canceled ? null : (selection.filePaths[0] ?? null);
 }
 
+async function chooseQmkMsysRoot(
+  parent: BrowserWindow,
+): Promise<string | null> {
+  if (process.platform !== "win32") {
+    throw new Error("Custom QMK MSYS folders are supported only on Windows");
+  }
+  const selection = await dialog.showOpenDialog(parent, {
+    title: "Choose the QMK_MSYS folder",
+    properties: ["openDirectory"],
+  });
+  return selection.canceled ? null : (selection.filePaths[0] ?? null);
+}
+
 async function chooseArtifactDestination(
   parent: BrowserWindow,
   suggestedName: string,
@@ -61,7 +88,13 @@ async function chooseArtifactDestination(
   return selection.canceled ? null : (selection.filePath ?? null);
 }
 
-function registerIpc(service: KeyflareService): void {
+function registerIpc({
+  service,
+  qmkMsysRootSettingPath,
+}: {
+  service: KeyflareService;
+  qmkMsysRootSettingPath: string;
+}): void {
   ipcMain.handle(ipcChannels.getEnvironment, () => service.getEnvironment());
   ipcMain.handle(ipcChannels.initializeSource, () =>
     service.initializeSource(),
@@ -73,6 +106,13 @@ function registerIpc(service: KeyflareService): void {
   ipcMain.handle(ipcChannels.selectKeymap, (event) => {
     const parent = getInvokingWindow(event);
     return service.selectKeymap(() => chooseKeymap(parent));
+  });
+  ipcMain.handle(ipcChannels.selectQmkMsysRoot, (event) => {
+    const parent = getInvokingWindow(event);
+    return service.selectQmkMsysRoot(
+      () => chooseQmkMsysRoot(parent),
+      qmkMsysRootSettingPath,
+    );
   });
   ipcMain.handle(ipcChannels.buildAndSave, (event, input: unknown) => {
     const parent = getInvokingWindow(event);
@@ -140,7 +180,7 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // macOS routes standard edit shortcuts through its native application menu.
   // These menus stay in the system menu bar, not inside the frameless window.
   Menu.setApplicationMenu(
@@ -152,7 +192,7 @@ app.whenReady().then(() => {
         ])
       : null,
   );
-  registerIpc(createService());
+  registerIpc(await createService());
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

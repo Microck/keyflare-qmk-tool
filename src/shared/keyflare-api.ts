@@ -6,6 +6,7 @@ export { ipcChannels } from "./ipc-channels";
 
 export interface EnvironmentStatus {
   kind: "ready" | "source-required" | "toolchain-required" | "unhealthy";
+  canSelectQmkMsysRoot: boolean;
   summary: string;
   details: string;
   qmkHome: string;
@@ -32,6 +33,7 @@ export interface KeyflareApi {
   listTargets(): Promise<string[]>;
   inspectTarget(target: string): Promise<TargetCapabilities>;
   selectKeymap(): Promise<KeymapSelection | null>;
+  selectQmkMsysRoot(): Promise<EnvironmentStatus | null>;
   buildAndSave(input: BuildAndSaveInput): Promise<SaveResult>;
   isWindowMaximized(): Promise<boolean>;
   onWindowMaximizedChange(listener: (maximized: boolean) => void): () => void;

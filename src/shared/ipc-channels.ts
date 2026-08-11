@@ -6,6 +6,7 @@ export const ipcChannels = {
   listTargets: "keyflare:list-targets",
   inspectTarget: "keyflare:inspect-target",
   selectKeymap: "keyflare:select-keymap",
+  selectQmkMsysRoot: "keyflare:select-qmk-msys-root",
   buildAndSave: "keyflare:build-and-save",
   isWindowMaximized: "keyflare:is-window-maximized",
   windowMaximizedChanged: "keyflare:window-maximized-changed",

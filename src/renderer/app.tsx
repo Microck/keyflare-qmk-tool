@@ -3,6 +3,7 @@ import {
   Check,
   ChevronRight,
   FileJson,
+  FolderOpen,
   Keyboard,
   LoaderCircle,
   Maximize2,
@@ -47,7 +48,7 @@ export function App({ api }: { api: KeyflareApi }) {
   );
   const [layoutName, setLayoutName] = useState("");
   const [busyAction, setBusyAction] = useState<
-    "source" | "target" | "keymap" | "build" | null
+    "source" | "qmk-msys" | "target" | "keymap" | "build" | null
   >(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<UiError | null>(null);
@@ -137,6 +138,27 @@ export function App({ api }: { api: KeyflareApi }) {
     }
   }
 
+  async function selectQmkMsysRoot() {
+    setBusyAction("qmk-msys");
+    setError(null);
+    try {
+      const status = await api.selectQmkMsysRoot();
+      if (status) {
+        setEnvironment(status);
+        if (status.kind === "ready") {
+          setTargets(await api.listTargets());
+        }
+      }
+    } catch (reason) {
+      setError({
+        summary: "Unable to use this QMK MSYS folder",
+        details: `${readError(reason)}. Choose another QMK_MSYS folder and try again.`,
+      });
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   async function loadTarget() {
     if (!target) return;
     setBusyAction("target");
@@ -215,10 +237,15 @@ export function App({ api }: { api: KeyflareApi }) {
       <SetupScreen
         api={api}
         environment={environment}
-        busy={busyAction === "source"}
+        busyAction={
+          busyAction === "source" || busyAction === "qmk-msys"
+            ? busyAction
+            : null
+        }
         error={error}
         onDownload={downloadSource}
         onCheck={checkEnvironment}
+        onSelectQmkMsysRoot={selectQmkMsysRoot}
       />
     );
   }
@@ -595,20 +622,24 @@ function LoadingScreen({
 function SetupScreen({
   api,
   environment,
-  busy,
+  busyAction,
   error,
   onDownload,
   onCheck,
+  onSelectQmkMsysRoot,
 }: {
   api: KeyflareApi;
   environment: EnvironmentStatus;
-  busy: boolean;
+  busyAction: "source" | "qmk-msys" | null;
   error: UiError | null;
   onDownload(): void;
   onCheck(): void;
+  onSelectQmkMsysRoot(): void;
 }) {
   const sourceRequired = environment.kind === "source-required";
   const toolchainRequired = environment.kind === "toolchain-required";
+  const canChooseQmkMsysRoot =
+    environment.canSelectQmkMsysRoot && !sourceRequired;
   let heading = "Repair the QMK build environment";
   let actionLabel = "Check QMK setup again";
   let SetupActionIcon = RotateCw;
@@ -642,8 +673,9 @@ function SetupScreen({
             </p>
             <ul className="platform-list">
               <li>
-                <strong>Windows:</strong> Keyflare uses the standard C:\QMK_MSYS
-                install automatically. Run qmk setup there once.
+                <strong>Windows:</strong> Keyflare finds C:\QMK_MSYS
+                automatically. If you installed it elsewhere, choose that
+                QMK_MSYS folder below.
               </li>
               <li>
                 <strong>macOS:</strong> install QMK with Homebrew, then run QMK
@@ -660,15 +692,52 @@ function SetupScreen({
           <strong>{environment.summary}</strong>
           <code>{error?.details ?? environment.details}</code>
         </div>
-        <button
-          className="accent-button setup-action"
-          type="button"
-          disabled={busy}
-          onClick={sourceRequired ? onDownload : onCheck}
-        >
-          {busy ? <LoaderCircle className="spin" /> : <SetupActionIcon />}
-          {busy ? "Working" : actionLabel}
-        </button>
+        {canChooseQmkMsysRoot ? (
+          <div className="setup-actions">
+            <button
+              className="secondary-button setup-action"
+              type="button"
+              disabled={busyAction !== null}
+              onClick={onCheck}
+            >
+              {busyAction === "source" ? (
+                <LoaderCircle className="spin" />
+              ) : (
+                <RotateCw />
+              )}
+              {busyAction === "source" ? "Checking QMK" : actionLabel}
+            </button>
+            <button
+              className="accent-button setup-action"
+              type="button"
+              disabled={busyAction !== null}
+              onClick={onSelectQmkMsysRoot}
+            >
+              {busyAction === "qmk-msys" ? (
+                <LoaderCircle className="spin" />
+              ) : (
+                <FolderOpen />
+              )}
+              {busyAction === "qmk-msys"
+                ? "Checking folder"
+                : "Choose QMK MSYS folder"}
+            </button>
+          </div>
+        ) : (
+          <button
+            className="accent-button setup-action"
+            type="button"
+            disabled={busyAction !== null}
+            onClick={sourceRequired ? onDownload : onCheck}
+          >
+            {busyAction ? (
+              <LoaderCircle className="spin" />
+            ) : (
+              <SetupActionIcon />
+            )}
+            {busyAction ? "Working" : actionLabel}
+          </button>
+        )}
       </main>
     </div>
   );
