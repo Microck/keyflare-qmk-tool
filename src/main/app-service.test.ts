@@ -7,7 +7,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { BuildRequest, BuildResult } from "./firmware-build";
 import type { EnvironmentStatus } from "../shared/keyflare-api";
 import type { TargetCapabilities } from "../shared/keyflare-contract";
-import { KeyflareService, type FirmwareBuilder } from "./app-service";
+import {
+  KeyflareService,
+  type FirmwareBuilder,
+  readQmkMsysRootSetting,
+} from "./app-service";
 
 const capabilities: TargetCapabilities = {
   target: "test/board",
@@ -36,6 +40,7 @@ afterEach(async () => {
 });
 
 class RecordingBuilder implements FirmwareBuilder {
+  readonly qmkMsysRoots: string[] = [];
   readonly requests: BuildRequest[] = [];
 
   constructor(
@@ -48,6 +53,19 @@ class RecordingBuilder implements FirmwareBuilder {
   }
 
   async initializeSource(): Promise<void> {}
+
+  validateQmkMsysRoot(root: string): string {
+    if (root === "D:\\Invalid") {
+      throw new Error(
+        "Choose the QMK_MSYS folder that contains usr\\bin\\bash.exe",
+      );
+    }
+    return root;
+  }
+
+  setValidatedQmkMsysRoot(root: string): void {
+    this.qmkMsysRoots.push(root);
+  }
 
   async listTargets(): Promise<string[]> {
     return ["test/board"];
@@ -69,6 +87,77 @@ class RecordingBuilder implements FirmwareBuilder {
 }
 
 describe("KeyflareService", () => {
+  it("validates and remembers a selected QMK MSYS folder", async () => {
+    const root = await mkdtemp(join(tmpdir(), "keyflare-service-"));
+    temporaryDirectories.push(root);
+    const builder = new RecordingBuilder(readyEnvironment(root), "unused.hex");
+    const service = new KeyflareService({ builder });
+    const settingPath = join(root, "qmk-msys-root.txt");
+
+    await expect(
+      service.selectQmkMsysRoot(async () => "D:\\Tools\\QMK_MSYS", settingPath),
+    ).resolves.toEqual(readyEnvironment(root));
+
+    expect(builder.qmkMsysRoots).toEqual(["D:\\Tools\\QMK_MSYS"]);
+    await expect(readQmkMsysRootSetting(settingPath)).resolves.toBe(
+      "D:\\Tools\\QMK_MSYS",
+    );
+  });
+
+  it("does not change settings when folder selection is canceled", async () => {
+    const root = await mkdtemp(join(tmpdir(), "keyflare-service-"));
+    temporaryDirectories.push(root);
+    const builder = new RecordingBuilder(readyEnvironment(root), "unused.hex");
+    const service = new KeyflareService({ builder });
+    const settingPath = join(root, "qmk-msys-root.txt");
+
+    await expect(
+      service.selectQmkMsysRoot(async () => null, settingPath),
+    ).resolves.toBeNull();
+    expect(builder.qmkMsysRoots).toEqual([]);
+    await expect(readQmkMsysRootSetting(settingPath)).resolves.toBeUndefined();
+  });
+
+  it("does not remember an invalid QMK MSYS folder", async () => {
+    const root = await mkdtemp(join(tmpdir(), "keyflare-service-"));
+    temporaryDirectories.push(root);
+    const builder = new RecordingBuilder(readyEnvironment(root), "unused.hex");
+    const service = new KeyflareService({ builder });
+    const settingPath = join(root, "qmk-msys-root.txt");
+
+    await expect(
+      service.selectQmkMsysRoot(async () => "D:\\Invalid", settingPath),
+    ).rejects.toThrow(
+      "Choose the QMK_MSYS folder that contains usr\\bin\\bash.exe",
+    );
+    await expect(readQmkMsysRootSetting(settingPath)).resolves.toBeUndefined();
+  });
+
+  it("keeps the active and saved roots when persistence fails", async () => {
+    const root = await mkdtemp(join(tmpdir(), "keyflare-service-"));
+    temporaryDirectories.push(root);
+    const settingPath = join(root, "qmk-msys-root.txt");
+    const previousRoot = "E:\\QMK_MSYS";
+    const builder = new RecordingBuilder(readyEnvironment(root), "unused.hex");
+    builder.setValidatedQmkMsysRoot(previousRoot);
+    await writeFile(settingPath, previousRoot, "utf8");
+    const service = new KeyflareService({
+      builder,
+      saveQmkMsysRootSetting: async () => {
+        throw new Error("disk full");
+      },
+    });
+
+    await expect(
+      service.selectQmkMsysRoot(async () => "D:\\Tools\\QMK_MSYS", settingPath),
+    ).rejects.toThrow("disk full");
+
+    expect(builder.qmkMsysRoots).toEqual([previousRoot]);
+    await expect(readQmkMsysRootSetting(settingPath)).resolves.toBe(
+      previousRoot,
+    );
+  });
+
   it("keeps imported file paths out of the renderer contract", async () => {
     const root = await mkdtemp(join(tmpdir(), "keyflare-service-"));
     temporaryDirectories.push(root);
@@ -163,6 +252,7 @@ describe("KeyflareService", () => {
 function readyEnvironment(qmkHome: string): EnvironmentStatus {
   return {
     kind: "ready",
+    canSelectQmkMsysRoot: false,
     summary: "QMK build environment ready",
     details: "qmk doctor passed.",
     qmkHome,

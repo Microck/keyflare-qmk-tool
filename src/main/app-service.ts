@@ -1,4 +1,5 @@
-import { writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 
 import type { BuildRequest, BuildResult } from "./firmware-build";
@@ -12,9 +13,39 @@ import type { TargetCapabilities } from "../shared/keyflare-contract";
 export interface FirmwareBuilder {
   inspectEnvironment(): Promise<EnvironmentStatus>;
   initializeSource(): Promise<void>;
+  validateQmkMsysRoot(root: string): string;
+  setValidatedQmkMsysRoot(root: string): void;
   listTargets(): Promise<string[]>;
   inspectTarget(target: string): Promise<TargetCapabilities>;
   build(request: BuildRequest): Promise<BuildResult>;
+}
+
+async function saveQmkMsysRootSetting(
+  settingPath: string,
+  root: string,
+): Promise<void> {
+  const temporaryPath = `${settingPath}.${randomUUID()}.tmp`;
+  try {
+    // A same-directory rename replaces the setting atomically, so a failed
+    // write cannot truncate the last known-good path.
+    await writeFile(temporaryPath, root, "utf8");
+    await rename(temporaryPath, settingPath);
+  } finally {
+    await rm(temporaryPath, { force: true });
+  }
+}
+
+export async function readQmkMsysRootSetting(
+  settingPath: string,
+): Promise<string | undefined> {
+  try {
+    return (await readFile(settingPath, "utf8")).trim() || undefined;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -28,6 +59,10 @@ export class KeyflareService {
   constructor(
     private readonly dependencies: {
       builder: FirmwareBuilder;
+      saveQmkMsysRootSetting?: (
+        settingPath: string,
+        root: string,
+      ) => Promise<void>;
     },
   ) {}
 
@@ -58,6 +93,24 @@ export class KeyflareService {
 
     this.selectedKeymapPath = path;
     return { name: basename(path) };
+  }
+
+  async selectQmkMsysRoot(
+    chooseRoot: () => Promise<string | null>,
+    settingPath: string,
+  ): Promise<EnvironmentStatus | null> {
+    const root = await chooseRoot();
+    if (!root) {
+      return null;
+    }
+
+    const validatedRoot = this.dependencies.builder.validateQmkMsysRoot(root);
+    await (this.dependencies.saveQmkMsysRootSetting ?? saveQmkMsysRootSetting)(
+      settingPath,
+      validatedRoot,
+    );
+    this.dependencies.builder.setValidatedQmkMsysRoot(validatedRoot);
+    return this.dependencies.builder.inspectEnvironment();
   }
 
   async buildAndSave(

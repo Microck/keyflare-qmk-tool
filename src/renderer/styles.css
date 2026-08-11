@@ -737,6 +737,17 @@ summary:focus-visible {
   margin-top: 20px;
 }
 
+.setup-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.setup-actions .setup-action {
+  min-width: 0;
+  margin-top: 0;
+}
+
 .spin {
   animation: spin 0.8s linear infinite;
 }

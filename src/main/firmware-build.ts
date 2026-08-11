@@ -90,53 +90,75 @@ export interface FirmwareBuildModuleOptions {
   moduleSourcePath: string;
   commandRunner?: CommandRunner;
   gitCommand?: string;
+  platform?: NodeJS.Platform;
+  qmkMsysRoot?: string;
   qmkCommand?: string;
-  toolCommandResolver?: () => ToolCommands;
+  toolCommandResolver?: (qmkMsysRoot: string | undefined) => ToolCommands;
 }
 
 export function resolveToolCommands({
   platform = process.platform,
+  qmkMsysRoot,
   systemDrive = process.env.SystemDrive ?? "C:",
   pathExists = existsSync,
 }: {
   platform?: NodeJS.Platform;
+  qmkMsysRoot?: string | undefined;
   systemDrive?: string;
   pathExists?: (path: string) => boolean;
 } = {}): ToolCommands {
   if (platform === "win32") {
-    const bashPath = win32.join(
-      systemDrive,
-      "QMK_MSYS",
-      "usr",
-      "bin",
-      "bash.exe",
-    );
-    if (pathExists(bashPath)) {
-      // QMK MSYS does not add its tools to the global Windows PATH. These are
-      // the same environment values used by its official shell_connector.cmd.
-      const env = {
-        CHERE_INVOKING: "1",
-        MSYSTEM: "UCRT64",
-        MSYS2_PATH_TYPE: "inherit",
-      };
-      return {
-        qmk: {
-          command: bashPath,
-          argsPrefix: ["-lc", 'qmk "$@"', "keyflare-qmk"],
-          env,
-        },
-        git: {
-          command: bashPath,
-          argsPrefix: ["-lc", 'git "$@"', "keyflare-git"],
-          env,
-        },
-      };
+    const defaultRoot = win32.join(systemDrive, "QMK_MSYS");
+    const defaultBashPath = qmkMsysBashPath(defaultRoot);
+    const root =
+      qmkMsysRoot ?? (pathExists(defaultBashPath) ? defaultRoot : null);
+    if (root) {
+      return qmkMsysToolCommands(qmkMsysBashPath(root));
     }
   }
 
   return {
     qmk: { command: "qmk", argsPrefix: [] },
     git: { command: "git", argsPrefix: [] },
+  };
+}
+
+export function validateQmkMsysRoot(
+  root: string,
+  { pathExists = existsSync }: { pathExists?: (path: string) => boolean } = {},
+): string {
+  const normalizedRoot = root.trim();
+  if (!normalizedRoot || !pathExists(qmkMsysBashPath(normalizedRoot))) {
+    throw new Error(
+      "Choose the QMK_MSYS folder that contains usr\\bin\\bash.exe",
+    );
+  }
+  return normalizedRoot;
+}
+
+function qmkMsysBashPath(root: string): string {
+  return win32.join(root, "usr", "bin", "bash.exe");
+}
+
+function qmkMsysToolCommands(bashPath: string): ToolCommands {
+  // QMK MSYS does not add its tools to the global Windows PATH. These are the
+  // same environment values used by its official shell_connector.cmd.
+  const env = {
+    CHERE_INVOKING: "1",
+    MSYSTEM: "UCRT64",
+    MSYS2_PATH_TYPE: "inherit",
+  };
+  return {
+    qmk: {
+      command: bashPath,
+      argsPrefix: ["-lc", 'qmk "$@"', "keyflare-qmk"],
+      env,
+    },
+    git: {
+      command: bashPath,
+      argsPrefix: ["-lc", 'git "$@"', "keyflare-git"],
+      env,
+    },
   };
 }
 
@@ -189,19 +211,26 @@ export class FirmwareBuildModule {
 
   private readonly commandRunner: CommandRunner;
   private readonly moduleSourcePath: string;
+  private readonly platform: NodeJS.Platform;
   private readonly toolCommandOverrides: Partial<ToolCommands>;
-  private readonly toolCommandResolver: () => ToolCommands;
+  private readonly toolCommandResolver: (
+    qmkMsysRoot: string | undefined,
+  ) => ToolCommands;
   private readonly workRoot: string;
   private buildInProgress = false;
   private inspectedTarget: TargetCapabilities | null = null;
+  private qmkMsysRoot?: string;
 
   constructor({
     appDataPath,
     moduleSourcePath,
     commandRunner = createCommandRunner(),
     gitCommand,
+    platform = process.platform,
+    qmkMsysRoot,
     qmkCommand,
-    toolCommandResolver = resolveToolCommands,
+    toolCommandResolver = (configuredRoot) =>
+      resolveToolCommands({ platform, qmkMsysRoot: configuredRoot }),
   }: FirmwareBuildModuleOptions) {
     this.qmkHome = join(appDataPath, "qmk_firmware");
     // QMK userspaces must sit outside qmk_firmware or QMK classifies their
@@ -209,6 +238,10 @@ export class FirmwareBuildModule {
     this.workRoot = join(appDataPath, "keyflare-work");
     this.commandRunner = commandRunner;
     this.moduleSourcePath = moduleSourcePath;
+    this.platform = platform;
+    if (qmkMsysRoot) {
+      this.qmkMsysRoot = qmkMsysRoot;
+    }
     this.toolCommandOverrides = {};
     if (gitCommand) {
       this.toolCommandOverrides.git = { command: gitCommand, argsPrefix: [] };
@@ -227,7 +260,7 @@ export class FirmwareBuildModule {
     // QMK MSYS installation without requiring the user to restart Keyflare.
     const tool =
       this.toolCommandOverrides[toolName] ??
-      this.toolCommandResolver()[toolName];
+      this.toolCommandResolver(this.qmkMsysRoot)[toolName];
     const commandRequest: CommandRequest = {
       ...request,
       command: tool.command,
@@ -237,6 +270,14 @@ export class FirmwareBuildModule {
       commandRequest.env = { ...tool.env, ...request.env };
     }
     return this.commandRunner.run(commandRequest);
+  }
+
+  validateQmkMsysRoot(root: string): string {
+    return validateQmkMsysRoot(root);
+  }
+
+  setValidatedQmkMsysRoot(validatedRoot: string): void {
+    this.qmkMsysRoot = validatedRoot;
   }
 
   async inspectEnvironment(): Promise<EnvironmentStatus> {
@@ -256,6 +297,7 @@ export class FirmwareBuildModule {
     } catch (error) {
       return {
         kind: "toolchain-required",
+        canSelectQmkMsysRoot: this.platform === "win32",
         summary: "Install the supported QMK build environment",
         details: getErrorMessage(error),
         qmkHome: this.qmkHome,
@@ -268,6 +310,7 @@ export class FirmwareBuildModule {
     } catch {
       return {
         kind: "source-required",
+        canSelectQmkMsysRoot: this.platform === "win32",
         summary: "QMK is ready. Download Keyflare's pinned firmware source.",
         details: `Keyflare will store QMK ${qmkFirmwareRef.slice(0, 12)} in ${this.qmkHome}.`,
         qmkHome: this.qmkHome,
@@ -293,6 +336,7 @@ export class FirmwareBuildModule {
       if (currentRevision !== qmkFirmwareRef) {
         return {
           kind: "source-required",
+          canSelectQmkMsysRoot: this.platform === "win32",
           summary: "Update Keyflare's pinned QMK source",
           details: `Expected ${qmkFirmwareRef.slice(0, 12)}, found ${currentRevision.slice(0, 12)}.`,
           qmkHome: this.qmkHome,
@@ -302,6 +346,7 @@ export class FirmwareBuildModule {
 
       return {
         kind: "ready",
+        canSelectQmkMsysRoot: this.platform === "win32",
         summary: "QMK build environment ready",
         details:
           doctor.stdout.trim() || doctor.stderr.trim() || "qmk doctor passed.",
@@ -311,6 +356,7 @@ export class FirmwareBuildModule {
     } catch (error) {
       return {
         kind: "unhealthy",
+        canSelectQmkMsysRoot: this.platform === "win32",
         summary: "QMK found a build-environment problem",
         details: getErrorMessage(error),
         qmkHome: this.qmkHome,

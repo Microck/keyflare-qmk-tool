@@ -81,7 +81,8 @@ this is deliberately strict. a keyboard photo, layout shape, compiled firmware f
 
 keyflare uses QMK's supported host environment instead of bundling several gigabytes of compilers and device tools.
 
-- **Windows:** install QMK MSYS and launch keyflare from that environment.
+- **Windows:** install QMK MSYS. keyflare detects `C:\QMK_MSYS` automatically,
+  or lets you choose the `QMK_MSYS` folder when it is installed elsewhere.
 - **macOS:** install QMK with Homebrew and complete `qmk setup`.
 - **Linux:** install QMK CLI and run the QMK bootstrap setup for your distribution.
 

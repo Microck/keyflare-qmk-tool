@@ -14,6 +14,7 @@ import {
   parseKeyboardTargets,
   prepareKeymapDocument,
   resolveToolCommands,
+  validateQmkMsysRoot,
 } from "./firmware-build";
 
 const temporaryDirectories: string[] = [];
@@ -39,6 +40,19 @@ describe("createCommandRunner", () => {
 });
 
 describe("resolveToolCommands", () => {
+  it("uses a configured QMK MSYS installation outside the default path", () => {
+    expect(
+      resolveToolCommands({
+        platform: "win32",
+        qmkMsysRoot: "D:\\Tools\\QMK_MSYS",
+        pathExists: () => false,
+      }),
+    ).toMatchObject({
+      qmk: { command: "D:\\Tools\\QMK_MSYS\\usr\\bin\\bash.exe" },
+      git: { command: "D:\\Tools\\QMK_MSYS\\usr\\bin\\bash.exe" },
+    });
+  });
+
   it("uses the official QMK MSYS shell when it is installed on Windows", () => {
     const bashPath = "C:\\QMK_MSYS\\usr\\bin\\bash.exe";
 
@@ -80,6 +94,14 @@ describe("resolveToolCommands", () => {
       qmk: { command: "qmk", argsPrefix: [] },
       git: { command: "git", argsPrefix: [] },
     });
+  });
+
+  it("rejects a folder that is not a QMK MSYS installation", () => {
+    expect(() =>
+      validateQmkMsysRoot("D:\\Wrong", {
+        pathExists: () => false,
+      }),
+    ).toThrow("Choose the QMK_MSYS folder that contains usr\\bin\\bash.exe");
   });
 });
 

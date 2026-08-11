@@ -52,6 +52,7 @@ Keyflare has one job: select a QMK keyboard, select declared reactive outputs, c
 ## Behavior rules
 
 - Show only outputs that QMK metadata declares. Do not infer unsupported hardware.
+- On Windows, detect the default QMK MSYS path and let users remember a custom installation folder.
 - Do not show color controls. The installed LED sets the color.
 - Keep unavailable controls visible when their position teaches the flow, but disable them clearly.
 - Keep keyboard target search bounded to 50 suggestions.
