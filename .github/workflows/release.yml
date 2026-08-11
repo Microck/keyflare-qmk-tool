@@ -17,13 +17,13 @@ jobs:
         include:
           - name: linux-x64
             os: ubuntu-latest
-            command: bunx electron-builder --linux --x64
+            command: bunx electron-builder --linux --x64 --publish never
           - name: windows-x64
             os: windows-latest
-            command: bunx electron-builder --win --x64
+            command: bunx electron-builder --win --x64 --publish never
           - name: macos-universal
             os: macos-latest
-            command: bunx electron-builder --mac --x64 --arm64
+            command: bunx electron-builder --mac --x64 --arm64 --publish never
     runs-on: ${{ matrix.os }}
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
