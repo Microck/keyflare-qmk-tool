@@ -1,6 +1,16 @@
-# keyflare
+<div align="center">
+  <img src="build/icon.png" alt="keyflare logo" width="180" />
 
-build fixed-color reactive lighting into QMK firmware without editing C by hand.
+  <h1>keyflare</h1>
+
+  <p><strong>build fixed-color reactive lighting into QMK firmware without editing C by hand.</strong></p>
+
+  <p>
+    <a href="https://github.com/Microck/keyflare-qmk-tool/releases"><img src="https://img.shields.io/github/v/release/Microck/keyflare-qmk-tool?display_name=tag&style=flat-square&label=release&color=000000" alt="release badge"></a>
+    <a href="https://github.com/Microck/keyflare-qmk-tool/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Microck/keyflare-qmk-tool/ci.yml?branch=main&style=flat-square&label=ci&color=000000" alt="ci badge"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-mit-000000?style=flat-square" alt="license badge"></a>
+  </p>
+</div>
 
 choose your QMK keyboard source folder, keep its default keymap or import your own `keymap.json`, select the lighting channels QMK actually declares, and save a firmware file for your normal flashing tool.
 
