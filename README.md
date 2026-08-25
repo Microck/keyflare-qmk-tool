@@ -23,11 +23,10 @@ keyflare never guesses where LEDs are installed. if QMK only declares a Scroll L
 - local QMK keyboard source import, including target families with revisions
 - default QMK keymaps or imported `keymap.json` files for the same target
 - read-only keyboard geometry from QMK layout metadata
-- standard backlight, Num Lock, Caps Lock, Scroll Lock, Compose, and Kana channels
-- reactive lighting while at least one physical key is held
+- RGB Matrix reactive effect while keys are held, plus standard backlight, Num Lock, Caps Lock, Scroll Lock, Compose, and Kana channels
 - `.hex`, `.bin`, and `.uf2` output through the real QMK compiler
 - isolated Electron renderer with a small validated IPC surface
-- no RGB controls, per-key LED guesses, or built-in flashing
+- no per-key LED guesses, or built-in flashing
 
 ---
 
@@ -57,6 +56,7 @@ keyboard source + keymap + selected declared channels
 the generated QMK module counts held physical keys. it turns the selected channels on after the first press, then restores the existing backlight or host indicator state after the last release.
 
 the preview highlights every key for backlight and the matching logical lock key for an indicator. this feedback explains the selected channel. it does not claim that the indicator LED is physically installed under that key.
+the RGB Matrix channel runs QMK's typing heatmap effect while at least one key is held, then restores the user's saved effect and on/off state without EEPROM writes.
 
 ---
 
@@ -76,12 +76,12 @@ keyflare compiles firmware. it does not put a keyboard into bootloader mode, ins
 
 ## supported channels
 
-| QMK metadata                                        | keyflare behavior                            |
-| --------------------------------------------------- | -------------------------------------------- |
-| standard backlight feature with a declared pin      | offer the keyboard backlight                 |
-| standard lock or host indicator pin                 | offer that exact indicator                   |
-| RGB matrix, LED matrix, or vendor-specific lighting | do not expose it                             |
-| no supported declared channel                       | explain that the target cannot be configured |
+| QMK metadata                                    | keyflare behavior                            |
+| ----------------------------------------------- | -------------------------------------------- |
+| standard backlight feature with a declared pin  | offer the keyboard backlight                 |
+| standard lock or host indicator pin             | offer that exact indicator                   |
+| RGB matrix with a declared driver or WS2812 pin | offer a reactive RGB Matrix channel          |
+| no supported declared channel                   | explain that the target cannot be configured |
 
 this is deliberately strict. a keyboard photo, layout shape, compiled firmware file, or model name is not enough evidence to infer physical LED wiring.
 

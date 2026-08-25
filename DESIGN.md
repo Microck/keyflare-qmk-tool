@@ -53,10 +53,10 @@ Keyflare has one job: import a QMK keyboard source folder, select declared react
 
 - Show only outputs that QMK metadata declares. Do not infer unsupported hardware.
 - On Windows, detect the default QMK MSYS path and let users remember a custom installation folder.
-- Do not show color controls. The installed LED sets the color.
+- Do not show color controls. The installed LED sets the color, and the RGB Matrix channel uses the fixed typing heatmap effect.
 - Keep unavailable controls visible when their position teaches the flow, but disable them clearly.
 - Use a native folder picker for keyboard source. If the folder declares several targets, anchor the in-app variant menu to its trigger and keep both edges aligned.
-- Selecting backlight highlights all preview keys. Selecting a lock indicator highlights its matching logical key when the active keymap declares one.
+- Selecting backlight or the RGB Matrix channel highlights all preview keys. Selecting a lock indicator highlights its matching logical key when the active keymap declares one.
 - Always state that key highlighting is a logical association, not proof of physical LED placement.
 - Keep the native application menu hidden. The custom top strip owns drag and window controls.
 - Use motion only for active progress indicators. Honor reduced-motion preferences.

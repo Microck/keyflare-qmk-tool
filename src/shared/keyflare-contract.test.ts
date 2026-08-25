@@ -108,6 +108,32 @@ describe("normalizeQmkInfo", () => {
     ).toEqual([]);
   });
 
+  it("exposes rgb_matrix only when the feature and a driver pin are declared", () => {
+    const layouts = {
+      LAYOUT: { layout: [{ matrix: [0, 0], x: 0, y: 0 }] },
+    };
+    expect(
+      normalizeQmkInfo({
+        target: "sam/sam80s",
+        info: {
+          keyboard_name: "SAM80-S",
+          features: { rgb_matrix: true },
+          rgb_matrix: { driver: "ws2812" },
+          ws2812: { pin: "GP8" },
+          layouts,
+        },
+      }).channels,
+    ).toEqual([
+      { id: "rgb_matrix", kind: "rgb", label: "RGB Matrix reactive" },
+    ]);
+    expect(
+      normalizeQmkInfo({
+        target: "sam/sam80s",
+        info: { features: { rgb_matrix: true }, layouts },
+      }).channels,
+    ).toEqual([]);
+  });
+
   it("adds keycodes only to the layout used by the default keymap", () => {
     const capabilities = normalizeQmkInfo({
       target: "tgr/jane/v2",

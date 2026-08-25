@@ -632,12 +632,14 @@ function KeyboardPreview({
   const maxY = Math.max(...layout.keys.map((key) => key.y + key.height));
   const width = maxX * unit + gap;
   const height = maxY * unit + gap;
-  const backlightSelected = channels.includes("backlight");
+  const backlightSelected =
+    channels.includes("backlight") || channels.includes("rgb_matrix");
   const selectedIndicatorChannels = channels.filter(
     (channel) => logicalIndicatorKeycodes[channel],
   );
   const selectionDescriptions = channels.map((channel) => {
     if (channel === "backlight") return "Backlight: all keys";
+    if (channel === "rgb_matrix") return "RGB Matrix reactive: all LEDs";
     const keycodes = logicalIndicatorKeycodes[channel];
     const label = logicalIndicatorLabels[channel];
     if (!keycodes || !label) {
@@ -701,9 +703,11 @@ function KeyboardPreview({
               <Check aria-hidden="true" /> {description}
             </span>
           ))}
-          <small>
-            Logical key preview only. The hardware pin controls the LED.
-          </small>
+          {channels.some((channel) => channel !== "rgb_matrix") && (
+            <small>
+              Logical key preview only. The hardware pin controls the LED.
+            </small>
+          )}
         </div>
       )}
     </div>
@@ -744,16 +748,18 @@ function formatKeyLabel(key: KeyboardLayout["keys"][number]): string {
 }
 
 function formatChannelLabel(channel: ChannelId): string {
-  return channel === "backlight"
-    ? "Backlight"
-    : `${channel
-        .split("_")
-        .map((word) => `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`)
-        .join(" ")} indicator`;
+  if (channel === "backlight") return "Backlight";
+  if (channel === "rgb_matrix") return "RGB Matrix reactive";
+  return `${channel
+    .split("_")
+    .map((word) => `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`)
+    .join(" ")} indicator`;
 }
 
 function channelDescription(channel: ChannelId): string {
   if (channel === "backlight") return "All keyboard backlight LEDs";
+  if (channel === "rgb_matrix")
+    return "Reactive RGB Matrix effect while keys are held";
   return `Dedicated ${formatChannelLabel(channel)} pin`;
 }
 

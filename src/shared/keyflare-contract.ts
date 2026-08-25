@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const channelIds = [
   "backlight",
+  "rgb_matrix",
   "num_lock",
   "caps_lock",
   "scroll_lock",
@@ -14,7 +15,7 @@ export type ChannelId = z.infer<typeof channelIdSchema>;
 
 export interface DeclaredChannel {
   id: ChannelId;
-  kind: "backlight" | "indicator";
+  kind: "backlight" | "rgb" | "indicator";
   label: string;
 }
 
@@ -67,6 +68,18 @@ const qmkInfoSchema = z
       })
       .passthrough()
       .optional(),
+    rgb_matrix: z
+      .object({
+        driver: z.string().min(1).optional(),
+      })
+      .passthrough()
+      .optional(),
+    ws2812: z
+      .object({
+        pin: pinSchema.optional(),
+      })
+      .passthrough()
+      .optional(),
     indicators: z
       .object({
         num_lock: pinSchema.optional(),
@@ -103,7 +116,7 @@ const indicatorDefinitions = [
   ["compose", "Compose indicator"],
   ["kana", "Kana indicator"],
 ] as const satisfies ReadonlyArray<
-  readonly [Exclude<ChannelId, "backlight">, string]
+  readonly [Exclude<ChannelId, "backlight" | "rgb_matrix">, string]
 >;
 
 export function normalizeQmkInfo({
@@ -136,6 +149,17 @@ export function normalizeQmkInfo({
   );
   if (parsed.data.features?.backlight === true && hasBacklightPin) {
     channels.push({ id: "backlight", kind: "backlight", label: "Backlight" });
+  }
+
+  const hasRgbMatrixDriver = Boolean(
+    parsed.data.rgb_matrix?.driver ?? parsed.data.ws2812?.pin,
+  );
+  if (parsed.data.features?.rgb_matrix === true && hasRgbMatrixDriver) {
+    channels.push({
+      id: "rgb_matrix",
+      kind: "rgb",
+      label: "RGB Matrix reactive",
+    });
   }
 
   for (const [id, label] of indicatorDefinitions) {
