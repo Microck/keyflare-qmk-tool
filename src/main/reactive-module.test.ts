@@ -23,6 +23,20 @@ describe("renderReactiveModuleConfig", () => {
     );
   });
 
+  it("enables the typing heatmap effect for rgb_matrix builds", () => {
+    expect(renderReactiveModuleConfig({ channels: ["rgb_matrix"] }))
+      .toMatchInlineSnapshot(`
+        "#pragma once
+
+        #define KEYFLARE_REACTIVE_RGB_MATRIX
+
+        #ifdef KEYFLARE_REACTIVE_RGB_MATRIX
+        #    define ENABLE_RGB_MATRIX_TYPING_HEATMAP
+        #endif
+        "
+      `);
+  });
+
   it("does not define the indicator helper in backlight-only builds", async () => {
     const source = await readFile(
       new URL(
@@ -34,6 +48,20 @@ describe("renderReactiveModuleConfig", () => {
 
     expect(source).toMatch(
       /#if defined\(KEYFLARE_REACTIVE_NUM_LOCK\)[\s\S]+static void keyflare_write_indicator[\s\S]+#endif/u,
+    );
+  });
+
+  it("ends the active override when an RGB control key is pressed", async () => {
+    const source = await readFile(
+      new URL(
+        "../../resources/qmk-module/keyflare/reactive/reactive.c",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+
+    expect(source).toMatch(
+      /IS_RGB_MATRIX_KEYCODE\(keycode\) \|\| IS_RGB_KEYCODE\(keycode\)[\s\S]+keyflare_apply_reactive_state\(false\);[\s\S]+return true;/u,
     );
   });
 });

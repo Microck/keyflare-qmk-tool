@@ -95,6 +95,21 @@ const fullSizeTarget: TargetCapabilities = {
   ],
 };
 
+const rgbMatrixTarget: TargetCapabilities = {
+  target: "test/rgb-pad",
+  keyboardName: "RGB Pad",
+  channels: [{ id: "rgb_matrix", kind: "rgb", label: "RGB Matrix reactive" }],
+  layouts: [
+    {
+      name: "LAYOUT",
+      keys: [
+        { row: 0, column: 0, x: 0, y: 0, width: 1, height: 1, label: "A" },
+        { row: 0, column: 1, x: 1, y: 0, width: 1, height: 1, label: "B" },
+      ],
+    },
+  ],
+};
+
 class InMemoryKeyflareApi implements KeyflareApi {
   readonly builds: BuildAndSaveInput[] = [];
   readonly qmkMsysSelections: string[] = [];
@@ -317,6 +332,41 @@ describe("Keyflare", () => {
       {
         target: "test/scroll-pad",
         channels: ["scroll_lock"],
+        keymap: "default",
+      },
+    ]);
+  });
+
+  it("treats rgb_matrix as a whole-board output", async () => {
+    const api = new InMemoryKeyflareApi(readyEnvironment, rgbMatrixTarget);
+    const user = userEvent.setup();
+    render(<App api={api} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Choose keyboard folder" }),
+    );
+
+    expect(
+      await screen.findByRole("checkbox", { name: "RGB Matrix reactive" }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("checkbox", { name: "RGB Matrix reactive" }),
+    );
+    expect(
+      document.querySelectorAll(".key-shape.output-selected"),
+    ).toHaveLength(2);
+    expect(
+      screen.getByText("RGB Matrix reactive: all LEDs"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/hardware pin controls the LED/u),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Build firmware" }));
+    expect(api.builds).toEqual([
+      {
+        target: "test/rgb-pad",
+        channels: ["rgb_matrix"],
         keymap: "default",
       },
     ]);

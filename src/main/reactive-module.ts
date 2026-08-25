@@ -27,5 +27,17 @@ export function renderReactiveModuleConfig(input: {
     .filter((channel) => uniqueChannels.has(channel))
     .map((channel) => `#define KEYFLARE_REACTIVE_${channel.toUpperCase()}`);
 
-  return `#pragma once\n\n${definitions.join("\n")}\n`;
+  // QMK compiles RGB Matrix effects only when their ENABLE_ flag is defined
+  // before the config chain closes. The module config.h is part of that
+  // chain, so selecting the channel guarantees the reactive effect exists.
+  const rgbEffect = uniqueChannels.has("rgb_matrix")
+    ? [
+        "",
+        "#ifdef KEYFLARE_REACTIVE_RGB_MATRIX",
+        "#    define ENABLE_RGB_MATRIX_TYPING_HEATMAP",
+        "#endif",
+      ]
+    : [];
+
+  return `#pragma once\n\n${[...definitions, ...rgbEffect].join("\n")}\n`;
 }
