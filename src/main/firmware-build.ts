@@ -398,13 +398,18 @@ export class FirmwareBuildModule {
       command: tool.command,
       args: [...tool.argsPrefix, ...request.args],
     };
-    // QMK CLI prefers QMK_HOME / user.qmk_home over cwd. On QMK MSYS that
-    // would inspect the official clone and miss Keyflare's imported keyboard.
-    if (tool.env || request.env || toolName === "qmk") {
+    // Only firmware-tree commands should pin QMK_HOME. `doctor` and
+    // `--version` must keep the user's QMK MSYS CLI, or a stub qmk.exe
+    // reports that `doctor` is not a valid command.
+    const pinManagedHome =
+      toolName === "qmk" && managedQmkCommands.has(request.args[0] ?? "");
+    if (tool.env || request.env || pinManagedHome) {
       commandRequest.env = {
         ...tool.env,
         ...request.env,
-        ...(toolName === "qmk" ? { QMK_HOME: this.qmkHome } : {}),
+        ...(pinManagedHome
+          ? { QMK_HOME: msysPath(this.qmkHome, tool.command) }
+          : {}),
       };
     }
     return this.commandRunner.run(commandRequest);
@@ -457,19 +462,10 @@ export class FirmwareBuildModule {
     }
 
     try {
-      const [doctor, revision] = await Promise.all([
-        this.runTool("qmk", {
-          args: ["doctor"],
-          cwd: this.qmkHome,
-          // QMK uses exit 1 for minor warnings such as absent flashing udev rules.
-          // Those warnings do not prevent Keyflare's compile-only workflow.
-          acceptedExitCodes: [0, 1],
-        }),
-        this.runTool("git", {
-          args: ["rev-parse", "HEAD"],
-          cwd: this.qmkHome,
-        }),
-      ]);
+      const revision = await this.runTool("git", {
+        args: ["rev-parse", "HEAD"],
+        cwd: this.qmkHome,
+      });
       const currentRevision = revision.stdout.trim();
       if (currentRevision !== qmkFirmwareRef) {
         return {
@@ -481,6 +477,13 @@ export class FirmwareBuildModule {
           qmkRef: qmkFirmwareRef,
         };
       }
+
+      const doctor = await this.runTool("qmk", {
+        args: ["doctor"],
+        // Do not pin cwd/QMK_HOME. Doctor must use the user's QMK CLI so a
+        // stub qmk.exe still exposes its host toolchain commands.
+        acceptedExitCodes: [0, 1],
+      });
 
       return {
         kind: "ready",
@@ -1124,6 +1127,20 @@ async function pathExists(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+const managedQmkCommands = new Set([
+  "info",
+  "compile",
+  "c2json",
+  "git-submodule",
+]);
+
+function msysPath(filePath: string, command: string): string {
+  if (!/bash\.exe$/iu.test(command)) return filePath;
+  const match = /^([A-Za-z]):[\\/](.*)$/u.exec(filePath);
+  if (!match) return filePath.replaceAll("\\", "/");
+  return `/${match[1]!.toLowerCase()}/${match[2]!.replaceAll("\\", "/")}`;
 }
 
 function getErrorMessage(error: unknown): string {

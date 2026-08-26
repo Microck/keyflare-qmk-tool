@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep `qmk doctor` on the user's QMK MSYS CLI so Windows setup does not fail with `invalid choice: 'doctor'`
+
 ## [0.1.11] - 2026-08-26
 
 ### Fixed
