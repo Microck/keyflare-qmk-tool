@@ -76,14 +76,16 @@ keyflare compiles firmware. it does not put a keyboard into bootloader mode, ins
 
 ## supported channels
 
-| QMK metadata                                    | keyflare behavior                            |
-| ----------------------------------------------- | -------------------------------------------- |
-| standard backlight feature with a declared pin  | offer the keyboard backlight                 |
-| standard lock or host indicator pin             | offer that exact indicator                   |
-| RGB matrix with a declared driver or WS2812 pin | offer a reactive RGB Matrix channel          |
-| no supported declared channel                   | explain that the target cannot be configured |
+| QMK metadata                                                   | keyflare behavior                             |
+| -------------------------------------------------------------- | --------------------------------------------- |
+| standard backlight feature with a declared pin                 | offer the keyboard backlight                  |
+| standard lock or host indicator pin                            | offer that exact indicator                    |
+| RGB matrix with a declared driver or WS2812 pin, and a LED map | offer a reactive RGB Matrix channel           |
+| RGB matrix without a LED map                                   | explain that the target needs rgb_matrix.leds |
+| no supported declared channel                                  | explain that the target cannot be configured  |
 
 this is deliberately strict. a keyboard photo, layout shape, compiled firmware file, or model name is not enough evidence to infer physical LED wiring.
+the reactive RGB Matrix channel also requires the target's metadata to define its LED map (`rgb_matrix.leds`), because QMK's build cannot address the LEDs without it.
 
 ---
 
