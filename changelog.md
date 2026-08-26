@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.9] - 2026-08-26
 
 ### Changed
 
@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Offer Caps Lock and Scroll Lock indicator channels on RGB Matrix targets without dedicated indicator pins: the host lock state lights an LED chosen from the target's declared LED map
+
+### Fixed
+
+- Ghost stacked LAYOUT_all alternates in the layout preview so split-key options render as one readable keyboard
+- Remove a stray file with an invalid Windows path from the repository
+
+## [0.1.8] - 2026-08-25
+
+### Added
 
 - Offer a reactive RGB Matrix channel for targets that declare the feature with a driver or WS2812 pin, running the typing heatmap effect while keys are held and restoring the saved effect without EEPROM writes
 
@@ -61,7 +70,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Run QMK and Git with the QMK MSYS tool paths for default and custom installations
 
-[Unreleased]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.9...HEAD
+[0.1.9]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.5...v0.1.6
