@@ -270,7 +270,7 @@ function qmkMsysToolCommands({
     "--noprofile",
     "--norc",
     "-c",
-    `${setup}export MSYS2_ENV_CONV_EXCL=QMK_HOME; export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; if [ -n "$QMK_HOME" ]; then qmk_unix=$(cygpath -u "$QMK_HOME" 2>/dev/null || printf '%s' "$QMK_HOME"); cd "$qmk_unix" || exit 1; fi; exec qmk "$@"`,
+    `${setup}export MSYS2_ENV_CONV_EXCL=QMK_HOME; export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; if [ -n "$QMK_HOME" ]; then qmk_unix=$(cygpath -u "$QMK_HOME" 2>/dev/null || printf '%s' "$QMK_HOME"); cd "$qmk_unix" || exit 1; unset QMK_HOME; fi; exec qmk "$@"`,
     "keyflare-qmk",
   ];
   const gitPrefix = [
