@@ -108,7 +108,7 @@ describe("normalizeQmkInfo", () => {
     ).toEqual([]);
   });
 
-  it("exposes rgb_matrix only when the feature and a driver pin are declared", () => {
+  it("exposes rgb_matrix only when the feature, a driver pin, and a LED map are declared", () => {
     const layouts = {
       LAYOUT: { layout: [{ matrix: [0, 0], x: 0, y: 0 }] },
     };
@@ -118,8 +118,24 @@ describe("normalizeQmkInfo", () => {
         info: {
           keyboard_name: "SAM80-S",
           features: { rgb_matrix: true },
-          rgb_matrix: { driver: "ws2812" },
+          rgb_matrix: {
+            driver: "ws2812",
+            leds: [{ x: 0, y: 0, flags: 15 }],
+          },
           ws2812: { pin: "GP8" },
+          layouts,
+        },
+      }).channels,
+    ).toEqual([
+      { id: "rgb_matrix", kind: "rgb", label: "RGB Matrix reactive" },
+    ]);
+    expect(
+      normalizeQmkInfo({
+        target: "sam/sam80s",
+        info: {
+          keyboard_name: "SAM80-S",
+          features: { rgb_matrix: true },
+          rgb_matrix: { driver: "ws2812", led_count: 94 },
           layouts,
         },
       }).channels,
@@ -132,6 +148,23 @@ describe("normalizeQmkInfo", () => {
         info: { features: { rgb_matrix: true }, layouts },
       }).channels,
     ).toEqual([]);
+  });
+
+  it("rejects rgb_matrix targets that define no LED map", () => {
+    expect(() =>
+      normalizeQmkInfo({
+        target: "sam/sam80s",
+        info: {
+          keyboard_name: "SAM80-S",
+          features: { rgb_matrix: true },
+          rgb_matrix: { driver: "ws2812" },
+          ws2812: { pin: "GP8" },
+          layouts: {
+            LAYOUT: { layout: [{ matrix: [0, 0], x: 0, y: 0 }] },
+          },
+        },
+      }),
+    ).toThrow(/defines no LED map/u);
   });
 
   it("adds keycodes only to the layout used by the default keymap", () => {

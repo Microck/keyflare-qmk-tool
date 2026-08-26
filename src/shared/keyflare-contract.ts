@@ -71,6 +71,28 @@ const qmkInfoSchema = z
     rgb_matrix: z
       .object({
         driver: z.string().min(1).optional(),
+        leds: z
+          .array(
+            z
+              .object({
+                x: z.number(),
+                y: z.number(),
+                flags: z.number().optional(),
+              })
+              .passthrough(),
+          )
+          .optional(),
+        layout: z
+          .array(
+            z
+              .object({
+                x: z.number(),
+                y: z.number(),
+              })
+              .passthrough(),
+          )
+          .optional(),
+        led_count: z.number().int().optional(),
       })
       .passthrough()
       .optional(),
@@ -155,6 +177,18 @@ export function normalizeQmkInfo({
     parsed.data.rgb_matrix?.driver ?? parsed.data.ws2812?.pin,
   );
   if (parsed.data.features?.rgb_matrix === true && hasRgbMatrixDriver) {
+    // QMK's data-driven build cannot address RGB Matrix LEDs without a LED
+    // map, so a target without one would fail compilation with an obscure
+    // error. Fail here with the recovery step instead.
+    const rgbMatrixLedData =
+      parsed.data.rgb_matrix?.leds?.length ||
+      parsed.data.rgb_matrix?.layout?.length ||
+      parsed.data.rgb_matrix?.led_count;
+    if (!rgbMatrixLedData) {
+      throw new Error(
+        "This target declares RGB Matrix but defines no LED map. Add rgb_matrix.leds (one entry per LED with x, y, and flags) to its keyboard.json so QMK can address the LEDs.",
+      );
+    }
     channels.push({
       id: "rgb_matrix",
       kind: "rgb",
