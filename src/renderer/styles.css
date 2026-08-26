@@ -605,6 +605,16 @@ summary:focus-visible {
   font-weight: 600;
 }
 
+.led-dot {
+  stroke: var(--border);
+  stroke-width: 1px;
+}
+
+.led-dot-chosen {
+  stroke: var(--accent);
+  stroke-width: 2px;
+}
+
 .channel-copy {
   min-width: 0;
   line-height: 1.2;

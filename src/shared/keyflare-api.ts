@@ -30,6 +30,13 @@ export const buildAndSaveInputSchema = z.object({
     })
     .partial()
     .optional(),
+  indicatorColors: z
+    .object({
+      caps_lock: z.string().regex(/^#[0-9a-f]{6}$/iu),
+      scroll_lock: z.string().regex(/^#[0-9a-f]{6}$/iu),
+    })
+    .partial()
+    .optional(),
   keymap: z.enum(["default", "imported"]),
 });
 

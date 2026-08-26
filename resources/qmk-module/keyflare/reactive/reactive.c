@@ -121,20 +121,30 @@ bool shutdown_reactive(bool jump_to_bootloader) {
 // indicator never force-enables it.
 bool rgb_matrix_indicators_reactive(void) {
     led_t const host_state = host_keyboard_led_state();
+#    ifndef KEYFLARE_REACTIVE_CAPS_LOCK_RGB_COLOR_R
+#        define KEYFLARE_REACTIVE_CAPS_LOCK_RGB_COLOR_R 229
+#        define KEYFLARE_REACTIVE_CAPS_LOCK_RGB_COLOR_G 72
+#        define KEYFLARE_REACTIVE_CAPS_LOCK_RGB_COLOR_B 77
+#    endif
 #    ifdef KEYFLARE_REACTIVE_CAPS_LOCK_RGB
     rgb_matrix_set_color(
         KEYFLARE_REACTIVE_CAPS_LOCK_RGB_LED,
-        host_state.caps_lock ? 255 : 0,
-        0,
-        0
+        host_state.caps_lock ? KEYFLARE_REACTIVE_CAPS_LOCK_RGB_COLOR_R : 0,
+        host_state.caps_lock ? KEYFLARE_REACTIVE_CAPS_LOCK_RGB_COLOR_G : 0,
+        host_state.caps_lock ? KEYFLARE_REACTIVE_CAPS_LOCK_RGB_COLOR_B : 0
     );
+#    endif
+#    ifndef KEYFLARE_REACTIVE_SCROLL_LOCK_RGB_COLOR_R
+#        define KEYFLARE_REACTIVE_SCROLL_LOCK_RGB_COLOR_R 63
+#        define KEYFLARE_REACTIVE_SCROLL_LOCK_RGB_COLOR_G 185
+#        define KEYFLARE_REACTIVE_SCROLL_LOCK_RGB_COLOR_B 80
 #    endif
 #    ifdef KEYFLARE_REACTIVE_SCROLL_LOCK_RGB
     rgb_matrix_set_color(
         KEYFLARE_REACTIVE_SCROLL_LOCK_RGB_LED,
-        0,
-        host_state.scroll_lock ? 255 : 0,
-        0
+        host_state.scroll_lock ? KEYFLARE_REACTIVE_SCROLL_LOCK_RGB_COLOR_R : 0,
+        host_state.scroll_lock ? KEYFLARE_REACTIVE_SCROLL_LOCK_RGB_COLOR_G : 0,
+        host_state.scroll_lock ? KEYFLARE_REACTIVE_SCROLL_LOCK_RGB_COLOR_B : 0
     );
 #    endif
     return true;

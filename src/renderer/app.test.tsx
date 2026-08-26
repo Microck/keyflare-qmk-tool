@@ -374,6 +374,7 @@ describe("Keyflare", () => {
       {
         target: "test/scroll-pad",
         channels: ["scroll_lock"],
+        indicatorColors: { scroll_lock: "#3fb950", caps_lock: "#e5484d" },
         keymap: "default",
       },
     ]);
@@ -409,6 +410,7 @@ describe("Keyflare", () => {
       {
         target: "test/rgb-pad",
         channels: ["rgb_matrix"],
+        indicatorColors: { scroll_lock: "#3fb950", caps_lock: "#e5484d" },
         keymap: "default",
       },
     ]);
@@ -458,6 +460,7 @@ describe("Keyflare", () => {
         target: "test/rgb-indicator",
         channels: ["scroll_lock"],
         indicatorLeds: { scroll_lock: 2 },
+        indicatorColors: { scroll_lock: "#3fb950", caps_lock: "#e5484d" },
         keymap: "default",
       },
     ]);
