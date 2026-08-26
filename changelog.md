@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Pass a Windows-readable `QMK_HOME` into QMK MSYS and cd into the managed firmware tree so `qmk info` loads firmware commands
+
 ## [0.1.12] - 2026-08-26
 
 ### Fixed

@@ -64,12 +64,13 @@ describe("resolveToolCommands", () => {
           "--noprofile",
           "--norc",
           "-c",
-          'export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; exec qmk "$@"',
+          'export MSYS2_ENV_CONV_EXCL=QMK_HOME; export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; if [ -n "$QMK_HOME" ]; then qmk_unix=$(cygpath -u "$QMK_HOME" 2>/dev/null || printf \'%s\' "$QMK_HOME"); cd "$qmk_unix" || exit 1; fi; exec qmk "$@"',
           "keyflare-qmk",
         ],
         env: {
           MSYSTEM: "MINGW64",
           MSYS2_PATH_TYPE: "inherit",
+          MSYS2_ENV_CONV_EXCL: "QMK_HOME",
           PATH: "D:\\Tools\\QMK_MSYS\\mingw64\\bin;D:\\Tools\\QMK_MSYS\\usr\\bin;C:\\Windows\\System32",
         },
       },
@@ -85,6 +86,7 @@ describe("resolveToolCommands", () => {
         env: {
           MSYSTEM: "MINGW64",
           MSYS2_PATH_TYPE: "inherit",
+          MSYS2_ENV_CONV_EXCL: "QMK_HOME",
           PATH: "D:\\Tools\\QMK_MSYS\\mingw64\\bin;D:\\Tools\\QMK_MSYS\\usr\\bin;C:\\Windows\\System32",
         },
       },
@@ -97,6 +99,12 @@ describe("resolveToolCommands", () => {
     const connectorPath = "C:\\QMK_MSYS\\shell_connector.cmd";
     const qmkMsysPath =
       "/opt/qmk/bin:/opt/uv/tools/bin:/ucrt64/bin:/usr/local/bin:/usr/bin:/bin:$PATH";
+    const ucrtEnv = {
+      MSYSTEM: "UCRT64",
+      MSYS2_PATH_TYPE: "inherit",
+      MSYS2_ENV_CONV_EXCL: "QMK_HOME",
+      PATH: "C:\\QMK_MSYS\\opt\\qmk\\bin;C:\\QMK_MSYS\\opt\\uv\\tools\\bin;C:\\QMK_MSYS\\ucrt64\\bin;C:\\QMK_MSYS\\usr\\bin;C:\\Windows\\System32",
+    };
 
     expect(
       resolveToolCommands({
@@ -114,14 +122,10 @@ describe("resolveToolCommands", () => {
           "--noprofile",
           "--norc",
           "-c",
-          `export PATH=${qmkMsysPath}; export QMK_DISTRIB_DIR=/opt/qmk; export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; exec qmk "$@"`,
+          `export PATH=${qmkMsysPath}; export QMK_DISTRIB_DIR=/opt/qmk; export MSYS2_ENV_CONV_EXCL=QMK_HOME; export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; if [ -n "$QMK_HOME" ]; then qmk_unix=$(cygpath -u "$QMK_HOME" 2>/dev/null || printf '%s' "$QMK_HOME"); cd "$qmk_unix" || exit 1; fi; exec qmk "$@"`,
           "keyflare-qmk",
         ],
-        env: {
-          MSYSTEM: "UCRT64",
-          MSYS2_PATH_TYPE: "inherit",
-          PATH: "C:\\QMK_MSYS\\opt\\qmk\\bin;C:\\QMK_MSYS\\opt\\uv\\tools\\bin;C:\\QMK_MSYS\\ucrt64\\bin;C:\\QMK_MSYS\\usr\\bin;C:\\Windows\\System32",
-        },
+        env: ucrtEnv,
       },
       git: {
         command: bashPath,
@@ -132,11 +136,7 @@ describe("resolveToolCommands", () => {
           `export PATH=${qmkMsysPath}; export QMK_DISTRIB_DIR=/opt/qmk; export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; exec git "$@"`,
           "keyflare-git",
         ],
-        env: {
-          MSYSTEM: "UCRT64",
-          MSYS2_PATH_TYPE: "inherit",
-          PATH: "C:\\QMK_MSYS\\opt\\qmk\\bin;C:\\QMK_MSYS\\opt\\uv\\tools\\bin;C:\\QMK_MSYS\\ucrt64\\bin;C:\\QMK_MSYS\\usr\\bin;C:\\Windows\\System32",
-        },
+        env: ucrtEnv,
       },
     });
   });

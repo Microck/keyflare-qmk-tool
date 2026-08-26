@@ -250,6 +250,7 @@ function qmkMsysToolCommands({
   const env = {
     MSYSTEM: msystem,
     MSYS2_PATH_TYPE: "inherit",
+    MSYS2_ENV_CONV_EXCL: "QMK_HOME",
     PATH: [
       ...qmkCliPaths,
       win32.join(root, environmentDirectory, "bin"),
@@ -265,24 +266,31 @@ function qmkMsysToolCommands({
     msystem === "UCRT64"
       ? "export PATH=/opt/qmk/bin:/opt/uv/tools/bin:/ucrt64/bin:/usr/local/bin:/usr/bin:/bin:$PATH; export QMK_DISTRIB_DIR=/opt/qmk; "
       : "";
-  const commandPrefix = (tool: "qmk" | "git", processName: string) => [
+  const qmkPrefix = [
     "--noprofile",
     "--norc",
     "-c",
-    `${setup}export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; exec ${tool} "$@"`,
-    processName,
+    `${setup}export MSYS2_ENV_CONV_EXCL=QMK_HOME; export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; if [ -n "$QMK_HOME" ]; then qmk_unix=$(cygpath -u "$QMK_HOME" 2>/dev/null || printf '%s' "$QMK_HOME"); cd "$qmk_unix" || exit 1; fi; exec qmk "$@"`,
+    "keyflare-qmk",
+  ];
+  const gitPrefix = [
+    "--noprofile",
+    "--norc",
+    "-c",
+    `${setup}export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; exec git "$@"`,
+    "keyflare-git",
   ];
   const bashPath = qmkMsysBashPath(root);
 
   return {
     qmk: {
       command: bashPath,
-      argsPrefix: commandPrefix("qmk", "keyflare-qmk"),
+      argsPrefix: qmkPrefix,
       env,
     },
     git: {
       command: bashPath,
-      argsPrefix: commandPrefix("git", "keyflare-git"),
+      argsPrefix: gitPrefix,
       env,
     },
   };
@@ -408,7 +416,7 @@ export class FirmwareBuildModule {
         ...tool.env,
         ...request.env,
         ...(pinManagedHome
-          ? { QMK_HOME: msysPath(this.qmkHome, tool.command) }
+          ? { QMK_HOME: this.qmkHome.replaceAll("\\", "/") }
           : {}),
       };
     }
@@ -1135,13 +1143,6 @@ const managedQmkCommands = new Set([
   "c2json",
   "git-submodule",
 ]);
-
-function msysPath(filePath: string, command: string): string {
-  if (!/bash\.exe$/iu.test(command)) return filePath;
-  const match = /^([A-Za-z]):[\\/](.*)$/u.exec(filePath);
-  if (!match) return filePath.replaceAll("\\", "/");
-  return `/${match[1]!.toLowerCase()}/${match[2]!.replaceAll("\\", "/")}`;
-}
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
