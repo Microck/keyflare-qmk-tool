@@ -29,8 +29,8 @@ import type {
 } from "../shared/keyflare-api";
 import { renderReactiveModuleConfig } from "./reactive-module";
 
-export const qmkFirmwareRef = "9caa5f871ddb9813c7370708be62d7a3e1cfeb75";
-const qmkFirmwareUrl = "https://github.com/qmk/qmk_firmware.git";
+export const qmkFirmwareRef = "dd43959ae5c08d8a28d38a1acf7b04e86b14a344";
+export const qmkFirmwareUrl = "https://github.com/vial-kb/vial-qmk.git";
 const keyflareModuleName = "keyflare/reactive";
 const importedKeyboardNamespace = "keyflare_imported";
 const firmwareExtensions = new Set(["bin", "hex", "uf2"]);
@@ -64,6 +64,7 @@ const buildRequestSchema = z.object({
     .optional(),
   keymap: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("default") }),
+    z.object({ kind: z.literal("vial") }),
     z.object({ kind: z.literal("file"), path: z.string().min(1) }),
   ]),
 });
@@ -622,6 +623,7 @@ export class FirmwareBuildModule {
     } finally {
       await rm(stagingRoot, { recursive: true, force: true });
     }
+    await this.normalizeImportedKeyboards(join(importedRoot, sourceSlug));
     return {
       name: sourceName,
       targets: definitions.map((definition) =>
@@ -647,11 +649,14 @@ export class FirmwareBuildModule {
       this.loadDefaultKeymap(target).catch(() => undefined),
     ]);
 
-    this.inspectedTarget = normalizeQmkInfo({
-      target,
-      info: parseJson(info.stdout, "QMK keyboard metadata"),
-      keymap,
-    });
+    this.inspectedTarget = {
+      ...normalizeQmkInfo({
+        target,
+        info: parseJson(info.stdout, "QMK keyboard metadata"),
+        keymap,
+      }),
+      hasVialKeymap: await this.targetHasVialKeymap(target),
+    };
     return this.inspectedTarget;
   }
 
@@ -688,44 +693,25 @@ export class FirmwareBuildModule {
           );
         }
       }
-      const source = await this.loadKeymap({
-        target: request.target,
-        keymap: request.keymap,
-      });
-      const keymap = prepareKeymapDocument({ source, target: request.target });
       await this.prepareBuildUserspace(
         workDirectory,
         selectedChannels,
         request.indicatorLeds,
         request.indicatorColors,
       );
-      const buildKeymapName = `keyflare_${basename(workDirectory).replaceAll(/[^a-zA-Z0-9]/gu, "_")}`;
-      qmkBuildDirectory = join(
-        this.qmkHome,
-        ".build",
-        `obj_${request.target.replaceAll("/", "_")}_${buildKeymapName}`,
-      );
-      const keymapPath = join(workDirectory, "keymap.json");
-      await writeFile(
-        keymapPath,
-        `${JSON.stringify({ ...keymap, keymap: buildKeymapName }, null, 2)}\n`,
-        "utf8",
-      );
-      const output = await this.runTool("qmk", {
-        args: ["compile", keymapPath, "-e", `QMK_USERSPACE=${workDirectory}`],
-        cwd: this.qmkHome,
-        // QMK's Python layer detects modules from the environment. The -e
-        // argument passes the same userspace through to Make.
-        env: { QMK_USERSPACE: workDirectory },
+      const compiled = await this.compileFirmware({
+        request,
+        workDirectory,
       });
+      qmkBuildDirectory = compiled.qmkBuildDirectory;
       const artifactPath = await findFirmwareArtifact(workDirectory);
       qmkRootArtifactPath = join(this.qmkHome, basename(artifactPath));
       const artifactExtension = getExtension(artifactPath);
 
       return {
-        artifactName: `${sanitizeFileNameSegment(request.target)}_${sanitizeFileNameSegment(keymap.keymap ?? "default_json")}.${artifactExtension}`,
+        artifactName: `${sanitizeFileNameSegment(request.target)}_${sanitizeFileNameSegment(compiled.keymapName)}.${artifactExtension}`,
         artifact: await readFile(artifactPath),
-        ...output,
+        ...compiled.output,
       };
     } finally {
       this.buildInProgress = false;
@@ -810,6 +796,161 @@ export class FirmwareBuildModule {
       parseJson(converted.stdout, "default QMK keymap"),
       target,
     );
+  }
+
+  private async compileFirmware({
+    request,
+    workDirectory,
+  }: {
+    request: BuildRequest;
+    workDirectory: string;
+  }): Promise<{
+    keymapName: string;
+    qmkBuildDirectory: string;
+    output: CommandResult;
+  }> {
+    // Vial firmware is a C keymap with vial.json and VIAL_ENABLE. Converting
+    // it to keymap.json would drop those files and produce a non-Vial UF2.
+    if (request.keymap.kind === "vial") {
+      if (!(await this.targetHasVialKeymap(request.target))) {
+        throw new Error("This keyboard has no Vial keymap");
+      }
+      const output = await this.runTool("qmk", {
+        args: [
+          "compile",
+          "-kb",
+          request.target,
+          "-km",
+          "vial",
+          "-e",
+          `QMK_USERSPACE=${workDirectory}`,
+        ],
+        cwd: this.qmkHome,
+        env: { QMK_USERSPACE: workDirectory },
+      });
+      return {
+        keymapName: "vial",
+        qmkBuildDirectory: join(
+          this.qmkHome,
+          ".build",
+          `obj_${request.target.replaceAll("/", "_")}_vial`,
+        ),
+        output,
+      };
+    }
+
+    const source = await this.loadKeymap({
+      target: request.target,
+      keymap: request.keymap,
+    });
+    const keymap = prepareKeymapDocument({ source, target: request.target });
+    const buildKeymapName = `keyflare_${basename(workDirectory).replaceAll(/[^a-zA-Z0-9]/gu, "_")}`;
+    const keymapPath = join(workDirectory, "keymap.json");
+    await writeFile(
+      keymapPath,
+      `${JSON.stringify({ ...keymap, keymap: buildKeymapName }, null, 2)}\n`,
+      "utf8",
+    );
+    const output = await this.runTool("qmk", {
+      args: ["compile", keymapPath, "-e", `QMK_USERSPACE=${workDirectory}`],
+      cwd: this.qmkHome,
+      // QMK's Python layer detects modules from the environment. The -e
+      // argument passes the same userspace through to Make.
+      env: { QMK_USERSPACE: workDirectory },
+    });
+    return {
+      keymapName: keymap.keymap ?? "default_json",
+      qmkBuildDirectory: join(
+        this.qmkHome,
+        ".build",
+        `obj_${request.target.replaceAll("/", "_")}_${buildKeymapName}`,
+      ),
+      output,
+    };
+  }
+
+  private async targetHasVialKeymap(target: string): Promise<boolean> {
+    const keyboardRoot = resolve(this.qmkHome, "keyboards");
+    let targetDirectory = resolve(keyboardRoot, target);
+    if (
+      targetDirectory !== keyboardRoot &&
+      !targetDirectory.startsWith(`${keyboardRoot}${sep}`)
+    ) {
+      throw new Error("Invalid QMK keyboard target path");
+    }
+    while (targetDirectory !== keyboardRoot) {
+      if (
+        await pathExists(join(targetDirectory, "keymaps", "vial", "vial.json"))
+      ) {
+        return true;
+      }
+      targetDirectory = resolve(targetDirectory, "..");
+    }
+    return false;
+  }
+
+  private async normalizeImportedKeyboards(
+    importedKeyboardRoot: string,
+  ): Promise<void> {
+    const definitions = await findKeyboardDefinitions(importedKeyboardRoot);
+    await Promise.all(
+      definitions.map((definition) =>
+        this.normalizeKeyboardDefinition(
+          join(importedKeyboardRoot, definition, "keyboard.json"),
+        ),
+      ),
+    );
+  }
+
+  private async normalizeKeyboardDefinition(
+    keyboardJsonPath: string,
+  ): Promise<void> {
+    let parsed: unknown;
+    try {
+      parsed = parseJson(
+        await readFile(keyboardJsonPath, "utf8"),
+        "keyboard definition",
+      );
+    } catch {
+      return;
+    }
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      return;
+    }
+    const data = parsed as Record<string, unknown>;
+    let changed = false;
+    const modules = Array.isArray(data.modules)
+      ? data.modules.filter(
+          (entry): entry is string => typeof entry === "string",
+        )
+      : [];
+    if (!modules.includes(keyflareModuleName)) {
+      data.modules = [...modules, keyflareModuleName];
+      changed = true;
+    }
+    const rgbMatrix = data.rgb_matrix;
+    if (
+      rgbMatrix &&
+      typeof rgbMatrix === "object" &&
+      !Array.isArray(rgbMatrix)
+    ) {
+      const rgb = rgbMatrix as Record<string, unknown>;
+      if (Array.isArray(rgb.leds) && !Array.isArray(rgb.layout)) {
+        rgb.layout = rgb.leds;
+        changed = true;
+      }
+    }
+    if (changed) {
+      await writeFile(
+        keyboardJsonPath,
+        `${JSON.stringify(data, null, 4)}\n`,
+        "utf8",
+      );
+    }
   }
 
   private async prepareBuildUserspace(

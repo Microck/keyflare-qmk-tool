@@ -130,6 +130,8 @@ export class KeyflareService {
     let keymap: BuildRequest["keymap"];
     if (input.keymap === "default") {
       keymap = { kind: "default" };
+    } else if (input.keymap === "vial") {
+      keymap = { kind: "vial" };
     } else {
       const path = this.selectedKeymapPath;
       if (!path) {

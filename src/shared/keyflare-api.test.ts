@@ -21,6 +21,20 @@ describe("Keyflare IPC inputs", () => {
     });
   });
 
+  it("accepts a Vial keymap build request", () => {
+    expect(
+      buildAndSaveInputSchema.parse({
+        target: "test/board",
+        channels: ["scroll_lock"],
+        keymap: "vial",
+      }),
+    ).toEqual({
+      target: "test/board",
+      channels: ["scroll_lock"],
+      keymap: "vial",
+    });
+  });
+
   it("rejects renderer-provided file paths", () => {
     expect(() =>
       buildAndSaveInputSchema.parse({

@@ -274,6 +274,34 @@ describe("KeyflareService", () => {
       ),
     ).resolves.toEqual({ kind: "canceled" });
   });
+
+  it("maps the Vial keymap choice without a JSON file", async () => {
+    const root = await mkdtemp(join(tmpdir(), "keyflare-service-"));
+    temporaryDirectories.push(root);
+    const builder = new RecordingBuilder(
+      readyEnvironment(root),
+      "test_board_vial.hex",
+    );
+    const service = new KeyflareService({ builder });
+
+    await expect(
+      service.buildAndSave(
+        {
+          target: "test/board",
+          channels: ["scroll_lock"],
+          keymap: "vial",
+        },
+        async () => join(root, "saved.hex"),
+      ),
+    ).resolves.toMatchObject({ kind: "saved" });
+    expect(builder.requests).toEqual([
+      {
+        target: "test/board",
+        channels: ["scroll_lock"],
+        keymap: { kind: "vial" },
+      },
+    ]);
+  });
 });
 
 function readyEnvironment(qmkHome: string): EnvironmentStatus {

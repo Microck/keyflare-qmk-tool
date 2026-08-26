@@ -101,7 +101,7 @@ keyflare uses QMK's supported host environment instead of bundling several gigab
 
 run `qmk doctor` if setup fails. keyflare accepts QMK's minor-warning status because missing flashing rules do not block compilation, but it stops on major toolchain errors.
 
-the managed QMK core is pinned to `9caa5f871ddb9813c7370708be62d7a3e1cfeb75`. a keyboard folder is not a complete compiler, so keyflare keeps the build system in a sparse checkout that excludes QMK's upstream keyboard catalog. users import only the keyboard source they want to build.
+the managed build core is pinned to [vial-qmk](https://github.com/vial-kb/vial-qmk) `dd43959ae5c08d8a28d38a1acf7b04e86b14a344`. a keyboard folder is not a complete compiler, so keyflare keeps the build system in a sparse checkout that excludes the upstream keyboard catalog. users import only the keyboard source they want to build. if that source ships a `keymaps/vial` folder, keyflare can compile it as Vial firmware for [vial.rocks](https://vial.rocks/).
 
 ---
 
