@@ -244,6 +244,10 @@ summary:focus-visible {
   stroke-width: 2px;
 }
 
+.key-alternate {
+  opacity: 0.38;
+}
+
 .keyboard-stage text {
   fill: var(--accent);
   font-size: 8px;
