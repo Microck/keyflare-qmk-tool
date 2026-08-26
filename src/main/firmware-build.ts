@@ -270,7 +270,7 @@ function qmkMsysToolCommands({
     "--noprofile",
     "--norc",
     "-c",
-    `${setup}export MSYS2_ENV_CONV_EXCL=QMK_HOME; export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; if [ -n "$QMK_HOME" ]; then qmk_unix=$(cygpath -u "$QMK_HOME" 2>/dev/null || printf '%s' "$QMK_HOME"); cd "$qmk_unix" || exit 1; fi; exec qmk "$@"`,
+    `${setup}export MSYS2_ENV_CONV_EXCL=QMK_HOME; export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; if [ -n "$QMK_HOME" ]; then qmk_unix=$(cygpath -u "$QMK_HOME" 2>/dev/null || printf '%s' "$QMK_HOME"); cd "$qmk_unix" || exit 1; if [ -f "$qmk_unix/lib/python/qmk/cli/__init__.py" ]; then PYTHONPATH="$qmk_unix/lib/python:$PYTHONPATH" exec python -m qmk "$@" 2>&1 || exec qmk "$@"; else exec qmk "$@"; fi; else exec qmk "$@"; fi`,
     "keyflare-qmk",
   ];
   const gitPrefix = [
@@ -665,6 +665,16 @@ export class FirmwareBuildModule {
       });
     } catch (error) {
       const message = getErrorMessage(error);
+      if (message.includes("invalid choice") && message.includes("'info'")) {
+        const hasFirmware = await pathExists(
+          join(this.qmkHome, "lib", "python", "qmk", "cli", "__init__.py"),
+        );
+        throw new Error(
+          hasFirmware
+            ? `${message} The QMK CLI stub was invoked instead of the firmware CLI. Try re-downloading QMK source or restarting the app.`
+            : `QMK firmware not found at ${this.qmkHome}. Please re-download QMK source.`,
+        );
+      }
       if (message.includes("invalid keyboard_folder")) {
         const actual = await this.findActualKeyboardTarget(target);
         if (actual && actual !== target) {
