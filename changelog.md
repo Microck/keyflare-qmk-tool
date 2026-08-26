@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.15] - 2026-08-26
+
+### Fixed
+
+- Resolve imported keyboard path for `qmk info` when the source folder structure differs from the expected target
+
 ## [0.1.14] - 2026-08-26
 
 ### Fixed
@@ -108,7 +114,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Run QMK and Git with the QMK MSYS tool paths for default and custom installations
 
-[Unreleased]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.14...HEAD
+[Unreleased]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.15...HEAD
+[0.1.15]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.14...v0.1.15
 [0.1.14]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.13...v0.1.14
 [0.1.13]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.12...v0.1.13
 [0.1.12]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.11...v0.1.12
