@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.14] - 2026-08-26
+
+### Fixed
+
+- Let MSYS qmk use cwd after entering managed firmware so `qmk info` does not stay on the stub CLI
+
 ## [0.1.13] - 2026-08-26
 
 ### Fixed
@@ -102,7 +108,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Run QMK and Git with the QMK MSYS tool paths for default and custom installations
 
-[Unreleased]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.13...HEAD
+[Unreleased]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.14...HEAD
+[0.1.14]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.13...v0.1.14
 [0.1.13]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.12...v0.1.13
 [0.1.12]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.10...v0.1.11
