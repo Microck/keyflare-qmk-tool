@@ -270,7 +270,7 @@ function qmkMsysToolCommands({
     "--noprofile",
     "--norc",
     "-c",
-    `${setup}export MSYS2_ENV_CONV_EXCL=QMK_HOME; export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; if [ -n "$QMK_HOME" ]; then qmk_unix=$(cygpath -u "$QMK_HOME" 2>/dev/null || printf '%s' "$QMK_HOME"); cd "$qmk_unix" || exit 1; unset QMK_HOME; fi; exec qmk "$@"`,
+    `${setup}export MSYS2_ENV_CONV_EXCL=QMK_HOME; export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; if [ -n "$QMK_HOME" ]; then qmk_unix=$(cygpath -u "$QMK_HOME" 2>/dev/null || printf '%s' "$QMK_HOME"); cd "$qmk_unix" || exit 1; fi; exec qmk "$@"`,
     "keyflare-qmk",
   ];
   const gitPrefix = [
@@ -641,12 +641,13 @@ export class FirmwareBuildModule {
       await rm(stagingRoot, { recursive: true, force: true });
     }
     await this.normalizeImportedKeyboards(join(importedRoot, sourceSlug));
+    const actualDefinitions = await findKeyboardDefinitions(importedRoot).catch(
+      () => definitions,
+    );
     return {
       name: sourceName,
-      targets: definitions.map((definition) =>
-        [importedKeyboardNamespace, sourceSlug, definition]
-          .filter(Boolean)
-          .join("/"),
+      targets: actualDefinitions.map((definition) =>
+        [importedKeyboardNamespace, definition].filter(Boolean).join("/"),
       ),
     };
   }
@@ -656,20 +657,43 @@ export class FirmwareBuildModule {
       return this.inspectedTarget;
     }
 
-    const [info, keymap] = await Promise.all([
-      this.runTool("qmk", {
+    let info: CommandResult;
+    try {
+      info = await this.runTool("qmk", {
         args: ["info", "-kb", target, "-f", "json"],
         cwd: this.qmkHome,
-      }),
-      // A keyboard can be valid without a default keymap. In that case the
-      // layout still loads, but its logical key labels remain unavailable.
-      this.loadDefaultKeymap(target).catch(() => undefined),
-    ]);
+      });
+    } catch (error) {
+      const message = getErrorMessage(error);
+      if (message.includes("invalid keyboard_folder")) {
+        const actual = await this.findActualKeyboardTarget(target);
+        if (actual && actual !== target) {
+          info = await this.runTool("qmk", {
+            args: ["info", "-kb", actual, "-f", "json"],
+            cwd: this.qmkHome,
+          });
+          target = actual;
+        } else {
+          const available = await this.listImportedKeyboards().catch(() => []);
+          throw new Error(
+            `${message} Choose a self-contained QMK keyboard source folder and try again.` +
+              (available.length
+                ? ` Found keyboard(s): ${available.join(", ")}.`
+                : "") +
+              ` Looked for ${target} under ${join(this.qmkHome, "keyboards", importedKeyboardNamespace)}.`,
+          );
+        }
+      } else {
+        throw error;
+      }
+    }
+    const keymap = await this.loadDefaultKeymap(target).catch(() => undefined);
+    const infoResult = info;
 
     this.inspectedTarget = {
       ...normalizeQmkInfo({
         target,
-        info: parseJson(info.stdout, "QMK keyboard metadata"),
+        info: parseJson(infoResult.stdout, "QMK keyboard metadata"),
         keymap,
       }),
       hasVialKeymap: await this.targetHasVialKeymap(target),
@@ -904,6 +928,46 @@ export class FirmwareBuildModule {
       targetDirectory = resolve(targetDirectory, "..");
     }
     return false;
+  }
+
+  private async findActualKeyboardTarget(
+    target: string,
+  ): Promise<string | undefined> {
+    if (!target.startsWith(`${importedKeyboardNamespace}/`)) return undefined;
+    const importedRoot = join(
+      this.qmkHome,
+      "keyboards",
+      importedKeyboardNamespace,
+    );
+    const definitions = await findKeyboardDefinitions(importedRoot).catch(
+      () => [],
+    );
+    const available = definitions.map((definition) =>
+      [importedKeyboardNamespace, definition].filter(Boolean).join("/"),
+    );
+    if (available.includes(target)) return target;
+    const suffix = target.split("/").pop() ?? "";
+    if (!suffix) return available[0];
+    const candidate = available.find(
+      (candidate) =>
+        candidate === `${importedKeyboardNamespace}/${suffix}` ||
+        candidate.endsWith(`/${suffix}`),
+    );
+    return candidate ?? available[0];
+  }
+
+  private async listImportedKeyboards(): Promise<string[]> {
+    const importedRoot = join(
+      this.qmkHome,
+      "keyboards",
+      importedKeyboardNamespace,
+    );
+    const definitions = await findKeyboardDefinitions(importedRoot).catch(
+      () => [],
+    );
+    return definitions.map((definition) =>
+      [importedKeyboardNamespace, definition].filter(Boolean).join("/"),
+    );
   }
 
   private async normalizeImportedKeyboards(
