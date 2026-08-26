@@ -516,6 +516,9 @@ describe("FirmwareBuildModule target inspection", () => {
       runner.requests.filter(({ args }) => args[0] === "info"),
     ).toHaveLength(1);
     expect(
+      runner.requests.find(({ args }) => args[0] === "info")?.env?.QMK_HOME,
+    ).toBe(builder.qmkHome);
+    expect(
       runner.requests.filter(({ args }) => args[0] === "c2json"),
     ).toHaveLength(0);
   });

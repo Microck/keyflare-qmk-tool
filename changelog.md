@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Point QMK CLI at Keyflare's managed firmware checkout so imported keyboards resolve on Windows QMK MSYS
+
 ## [0.1.10] - 2026-08-26
 
 ### Changed
