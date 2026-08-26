@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-08-26
+
 ### Fixed
 
 - Keep `qmk doctor` on the user's QMK MSYS CLI so Windows setup does not fail with `invalid choice: 'doctor'`
@@ -94,7 +96,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Run QMK and Git with the QMK MSYS tool paths for default and custom installations
 
-[Unreleased]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.11...HEAD
+[Unreleased]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.12...HEAD
+[0.1.12]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.8...v0.1.9
