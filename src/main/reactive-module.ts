@@ -3,7 +3,6 @@ import { z } from "zod";
 import {
   channelIds,
   channelIdSchema,
-  type ChannelId,
   type DeclaredChannel,
 } from "../shared/keyflare-contract";
 

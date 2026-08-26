@@ -380,6 +380,31 @@ describe("Keyflare", () => {
     ]);
   });
 
+  it("defaults to the Vial keymap when the target ships one", async () => {
+    const api = new InMemoryKeyflareApi(readyEnvironment, {
+      ...scrollLockOnlyTarget,
+      hasVialKeymap: true,
+    });
+    const user = userEvent.setup();
+    render(<App api={api} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Choose keyboard folder" }),
+    );
+    expect(
+      await screen.findByRole("radio", { name: "Use Vial keymap" }),
+    ).toBeChecked();
+
+    await user.click(
+      screen.getByRole("checkbox", { name: "Scroll Lock indicator" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Build firmware" }));
+
+    await waitFor(() => {
+      expect(api.builds[0]?.keymap).toBe("vial");
+    });
+  });
+
   it("treats rgb_matrix as a whole-board output", async () => {
     const api = new InMemoryKeyflareApi(readyEnvironment, rgbMatrixTarget);
     const user = userEvent.setup();

@@ -87,7 +87,7 @@ export function App({ api }: { api: KeyflareApi }) {
   const canBuild = Boolean(
     capabilities &&
     channels.length > 0 &&
-    (keymapMode === "default" || importedKeymapName) &&
+    (keymapMode === "default" || keymapMode === "vial" || importedKeymapName) &&
     !busyAction,
   );
 
@@ -190,6 +190,7 @@ export function App({ api }: { api: KeyflareApi }) {
     setTarget(selectedTarget);
     setCapabilities(inspected);
     setLayoutName(inspected.layouts[0]?.name ?? "");
+    setKeymapMode(inspected.hasVialKeymap ? "vial" : "default");
   }
 
   async function selectKeymap() {
@@ -527,7 +528,11 @@ export function App({ api }: { api: KeyflareApi }) {
           <section className="dock-pane build-pane">
             <PaneHeading
               title="Keymap and build"
-              complete={keymapMode === "default" || Boolean(importedKeymapName)}
+              complete={
+                keymapMode === "default" ||
+                keymapMode === "vial" ||
+                Boolean(importedKeymapName)
+              }
             />
             <div className="pane-content">
               <label className="choice-row">
@@ -543,6 +548,24 @@ export function App({ api }: { api: KeyflareApi }) {
                   <small>Build QMK's default layout for this target.</small>
                 </span>
               </label>
+              {capabilities?.hasVialKeymap && (
+                <label className="choice-row">
+                  <input
+                    type="radio"
+                    name="keymap"
+                    aria-label="Use Vial keymap"
+                    checked={keymapMode === "vial"}
+                    onChange={() => setKeymapMode("vial")}
+                  />
+                  <span>
+                    <strong>Use Vial keymap</strong>
+                    <small>
+                      Build the board's Vial keymap so the firmware works with
+                      vial.rocks.
+                    </small>
+                  </span>
+                </label>
+              )}
               <label className="choice-row">
                 <input
                   type="radio"

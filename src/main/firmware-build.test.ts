@@ -20,6 +20,7 @@ import {
   findFirmwareArtifact,
   prepareKeymapDocument,
   qmkFirmwareRef,
+  qmkFirmwareUrl,
   resolveToolCommands,
   validateQmkMsysRoot,
 } from "./firmware-build";
@@ -262,12 +263,7 @@ describe("FirmwareBuildModule source setup", () => {
 
     expect(runner.requests).toContainEqual({
       command: "git",
-      args: [
-        "remote",
-        "add",
-        "origin",
-        "https://github.com/qmk/qmk_firmware.git",
-      ],
+      args: ["remote", "add", "origin", qmkFirmwareUrl],
       cwd: builder.qmkHome,
     });
     expect(runner.requests).toContainEqual({
@@ -331,7 +327,9 @@ describe("FirmwareBuildModule keyboard source import", () => {
         ),
         "utf8",
       ),
-    ).resolves.toBe("{}");
+    ).resolves.toBe(
+      JSON.stringify({ modules: ["keyflare/reactive"] }, null, 4) + "\n",
+    );
   });
 
   it("rejects a folder without a QMK keyboard definition", async () => {
@@ -447,8 +445,13 @@ describe("FirmwareBuildModule keyboard source import", () => {
       name: "replacement",
     });
     await expect(
-      readFile(join(importedRoot, "replacement", "keyboard.json"), "utf8"),
-    ).resolves.toBe('{"keyboard_name":"New"}');
+      readFile(join(importedRoot, "replacement", "keyboard.json"), "utf8").then(
+        JSON.parse,
+      ),
+    ).resolves.toEqual({
+      keyboard_name: "New",
+      modules: ["keyflare/reactive"],
+    });
   });
 });
 
@@ -543,6 +546,31 @@ describe("FirmwareBuildModule target inspection", () => {
     expect(
       runner.requests.filter(({ args }) => args[0] === "c2json"),
     ).toHaveLength(1);
+  });
+
+  it("reports when the imported source ships a Vial keymap", async () => {
+    const appDataPath = await mkdtemp(join(tmpdir(), "keyflare-inspect-vial-"));
+    temporaryDirectories.push(appDataPath);
+    const runner = new CapabilityCommandRunner();
+    const builder = new FirmwareBuildModule({
+      appDataPath,
+      moduleSourcePath: "/module-source",
+      commandRunner: runner,
+    });
+    const vialDirectory = join(
+      builder.qmkHome,
+      "keyboards",
+      "test",
+      "board",
+      "keymaps",
+      "vial",
+    );
+    await mkdir(vialDirectory, { recursive: true });
+    await writeFile(join(vialDirectory, "vial.json"), "{}");
+
+    await expect(builder.inspectTarget("test/board")).resolves.toMatchObject({
+      hasVialKeymap: true,
+    });
   });
 });
 
@@ -731,6 +759,51 @@ describe("FirmwareBuildModule builds", () => {
       keymap: expect.stringMatching(/^keyflare_/u),
     });
   });
+
+  it("compiles a native Vial keymap instead of converting it to JSON", async () => {
+    const root = await mkdtemp(join(tmpdir(), "keyflare-build-vial-"));
+    temporaryDirectories.push(root);
+    const moduleSourcePath = join(root, "module-source");
+    await mkdir(moduleSourcePath);
+    await Promise.all([
+      writeFile(join(moduleSourcePath, "qmk_module.json"), "{}"),
+      writeFile(join(moduleSourcePath, "reactive.c"), ""),
+    ]);
+    const runner = new IsolatedBuildCommandRunner();
+    const builder = new FirmwareBuildModule({
+      appDataPath: root,
+      moduleSourcePath,
+      commandRunner: runner,
+    });
+    const vialDirectory = join(
+      builder.qmkHome,
+      "keyboards",
+      "test",
+      "board",
+      "keymaps",
+      "vial",
+    );
+    await mkdir(vialDirectory, { recursive: true });
+    await writeFile(join(vialDirectory, "vial.json"), "{}");
+
+    await expect(
+      builder.build({
+        target: "test/board",
+        channels: ["scroll_lock"],
+        keymap: { kind: "vial" },
+      }),
+    ).resolves.toMatchObject({ artifactName: "test_board_vial.hex" });
+    const compile = runner.requests.find(({ args }) => args[0] === "compile");
+    expect(compile?.args).toEqual([
+      "compile",
+      "-kb",
+      "test/board",
+      "-km",
+      "vial",
+      "-e",
+      `QMK_USERSPACE=${compile?.env?.QMK_USERSPACE ?? "missing"}`,
+    ]);
+  });
 });
 
 class RecordingCommandRunner implements CommandRunner {
@@ -816,6 +889,21 @@ class IsolatedBuildCommandRunner implements CommandRunner {
       const userspace = request.env?.QMK_USERSPACE;
       if (!userspace) {
         throw new Error("compile did not receive QMK_USERSPACE");
+      }
+      const keymapFlag = request.args.indexOf("-km");
+      if (keymapFlag >= 0) {
+        const keymapName = request.args[keymapFlag + 1] ?? "vial";
+        await writeFile(
+          join(userspace, `test_board_${keymapName}.hex`),
+          "firmware",
+        );
+        await expect(
+          readFile(
+            join(userspace, "modules", "keyflare", "reactive", "config.h"),
+            "utf8",
+          ),
+        ).resolves.toContain("KEYFLARE_REACTIVE_SCROLL_LOCK");
+        return { stdout: "", stderr: "" };
       }
       const keymap = JSON.parse(
         await readFile(request.args[1]!, "utf8"),

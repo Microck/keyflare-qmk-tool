@@ -46,6 +46,8 @@ export interface TargetCapabilities {
    * the RGB Matrix channel. Drives the RGB indicator LED picker.
    */
   rgbLeds?: { x: number; y: number }[];
+  /** True when the imported source ships keymaps/vial/vial.json. */
+  hasVialKeymap?: boolean;
 }
 
 const pinSchema = z.string().min(1);
@@ -193,7 +195,7 @@ export function normalizeQmkInfo({
       parsed.data.rgb_matrix?.led_count;
     if (!rgbMatrixLedData) {
       throw new Error(
-        "This target declares RGB Matrix but defines no LED map. Add rgb_matrix.leds (one entry per LED with x, y, and flags) to its keyboard.json so QMK can address the LEDs.",
+        "This target declares RGB Matrix but defines no LED map. Add rgb_matrix.leds or rgb_matrix.layout (one entry per LED with x, y, and flags) to its keyboard.json so QMK can address the LEDs.",
       );
     }
     channels.push({

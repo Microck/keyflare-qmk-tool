@@ -37,7 +37,7 @@ export const buildAndSaveInputSchema = z.object({
     })
     .partial()
     .optional(),
-  keymap: z.enum(["default", "imported"]),
+  keymap: z.enum(["default", "imported", "vial"]),
 });
 
 export type BuildAndSaveInput = z.infer<typeof buildAndSaveInputSchema>;
