@@ -398,8 +398,14 @@ export class FirmwareBuildModule {
       command: tool.command,
       args: [...tool.argsPrefix, ...request.args],
     };
-    if (tool.env || request.env) {
-      commandRequest.env = { ...tool.env, ...request.env };
+    // QMK CLI prefers QMK_HOME / user.qmk_home over cwd. On QMK MSYS that
+    // would inspect the official clone and miss Keyflare's imported keyboard.
+    if (tool.env || request.env || toolName === "qmk") {
+      commandRequest.env = {
+        ...tool.env,
+        ...request.env,
+        ...(toolName === "qmk" ? { QMK_HOME: this.qmkHome } : {}),
+      };
     }
     return this.commandRunner.run(commandRequest);
   }
