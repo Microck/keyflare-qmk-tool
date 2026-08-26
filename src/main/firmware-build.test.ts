@@ -27,6 +27,21 @@ import {
 
 const temporaryDirectories: string[] = [];
 
+// The files QMK's launcher inspects before it offers its firmware commands.
+// A checkout without them leaves Keyflare with the launcher's own five
+// commands, which is what a real interrupted download looks like.
+async function writeFirmwareCheckout(qmkHome: string): Promise<void> {
+  await mkdir(join(qmkHome, "lib", "python", "qmk", "cli"), {
+    recursive: true,
+  });
+  await mkdir(join(qmkHome, "quantum"), { recursive: true });
+  await Promise.all([
+    writeFile(join(qmkHome, "requirements.txt"), ""),
+    writeFile(join(qmkHome, "requirements-dev.txt"), ""),
+    writeFile(join(qmkHome, "lib", "python", "qmk", "cli", "__init__.py"), ""),
+  ]);
+}
+
 afterEach(async () => {
   await Promise.all(
     temporaryDirectories
@@ -64,7 +79,7 @@ describe("resolveToolCommands", () => {
           "--noprofile",
           "--norc",
           "-c",
-          'export MSYS2_ENV_CONV_EXCL=QMK_HOME; export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; if [ -n "$QMK_HOME" ]; then qmk_unix=$(cygpath -u "$QMK_HOME" 2>/dev/null || printf \'%s\' "$QMK_HOME"); cd "$qmk_unix" || exit 1; fi; exec qmk "$@"',
+          'export MSYS2_ENV_CONV_EXCL=QMK_HOME; export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; if [ -n "$QMK_HOME" ]; then qmk_unix=$(cygpath -u "$QMK_HOME" 2>/dev/null || printf \'%s\' "$QMK_HOME"); cd "$qmk_unix" || exit 1; QMK_HOME=$(cygpath -w "$qmk_unix" 2>/dev/null || printf \'%s\' "$QMK_HOME"); export QMK_HOME; fi; exec qmk "$@"',
           "keyflare-qmk",
         ],
         env: {
@@ -122,7 +137,7 @@ describe("resolveToolCommands", () => {
           "--noprofile",
           "--norc",
           "-c",
-          `export PATH=${qmkMsysPath}; export QMK_DISTRIB_DIR=/opt/qmk; export MSYS2_ENV_CONV_EXCL=QMK_HOME; export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; if [ -n "$QMK_HOME" ]; then qmk_unix=$(cygpath -u "$QMK_HOME" 2>/dev/null || printf '%s' "$QMK_HOME"); cd "$qmk_unix" || exit 1; fi; exec qmk "$@"`,
+          `export PATH=${qmkMsysPath}; export QMK_DISTRIB_DIR=/opt/qmk; export MSYS2_ENV_CONV_EXCL=QMK_HOME; export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; if [ -n "$QMK_HOME" ]; then qmk_unix=$(cygpath -u "$QMK_HOME" 2>/dev/null || printf '%s' "$QMK_HOME"); cd "$qmk_unix" || exit 1; QMK_HOME=$(cygpath -w "$qmk_unix" 2>/dev/null || printf '%s' "$QMK_HOME"); export QMK_HOME; fi; exec qmk "$@"`,
           "keyflare-qmk",
         ],
         env: ucrtEnv,
@@ -258,6 +273,7 @@ describe("FirmwareBuildModule source setup", () => {
       moduleSourcePath: "/unused-in-this-test",
       commandRunner: runner,
     });
+    await writeFirmwareCheckout(builder.qmkHome);
 
     await builder.initializeSource();
 
@@ -281,6 +297,11 @@ describe("FirmwareBuildModule source setup", () => {
         "origin",
         qmkFirmwareRef,
       ],
+      cwd: builder.qmkHome,
+    });
+    expect(runner.requests).toContainEqual({
+      command: "git",
+      args: ["checkout", "--detach", "--force", qmkFirmwareRef],
       cwd: builder.qmkHome,
     });
     expect(runner.requests.at(-1)).toMatchObject({
@@ -321,12 +342,55 @@ describe("FirmwareBuildModule source setup", () => {
       commandRunner: runner,
     });
     await mkdir(join(builder.qmkHome, ".git"), { recursive: true });
+    await writeFirmwareCheckout(builder.qmkHome);
 
     await expect(builder.inspectEnvironment()).resolves.toMatchObject({
       kind: "ready",
     });
     const doctor = runner.requests.find(({ args }) => args[0] === "doctor");
     expect(doctor?.env?.QMK_HOME).toBeUndefined();
+  });
+
+  it("asks to download again when the pinned checkout is incomplete", async () => {
+    const appDataPath = await mkdtemp(join(tmpdir(), "keyflare-partial-"));
+    temporaryDirectories.push(appDataPath);
+    const runner = new RecordingCommandRunner();
+    runner.stdoutFor = (request) =>
+      request.args[0] === "rev-parse" ? qmkFirmwareRef : "";
+    const builder = new FirmwareBuildModule({
+      appDataPath,
+      moduleSourcePath: "/unused-in-this-test",
+      commandRunner: runner,
+    });
+    await mkdir(join(builder.qmkHome, ".git"), { recursive: true });
+    await writeFirmwareCheckout(builder.qmkHome);
+    await rm(join(builder.qmkHome, "requirements-dev.txt"));
+
+    await expect(builder.inspectEnvironment()).resolves.toMatchObject({
+      kind: "source-required",
+      details: expect.stringContaining("requirements-dev.txt"),
+    });
+    expect(runner.requests.some(({ args }) => args[0] === "doctor")).toBe(
+      false,
+    );
+  });
+
+  it("stops the download before QMK rejects its own firmware commands", async () => {
+    const appDataPath = await mkdtemp(join(tmpdir(), "keyflare-truncated-"));
+    temporaryDirectories.push(appDataPath);
+    const runner = new RecordingCommandRunner();
+    const builder = new FirmwareBuildModule({
+      appDataPath,
+      moduleSourcePath: "/unused-in-this-test",
+      commandRunner: runner,
+    });
+
+    await expect(builder.initializeSource()).rejects.toThrow(
+      "is missing quantum, requirements.txt",
+    );
+    expect(
+      runner.requests.some(({ args }) => args[0] === "git-submodule"),
+    ).toBe(false);
   });
 });
 
@@ -585,6 +649,26 @@ describe("FirmwareBuildModule target inspection", () => {
     expect(
       runner.requests.filter(({ args }) => args[0] === "c2json"),
     ).toHaveLength(1);
+  });
+
+  it("names the missing checkout files when QMK rejects info", async () => {
+    const appDataPath = await mkdtemp(join(tmpdir(), "keyflare-stub-cli-"));
+    temporaryDirectories.push(appDataPath);
+    const builder = new FirmwareBuildModule({
+      appDataPath,
+      moduleSourcePath: "/module-source",
+      commandRunner: {
+        async run() {
+          throw new Error(
+            "qmk.exe: error: argument {config,clone,console,env,setup}: invalid choice: 'info'",
+          );
+        },
+      },
+    });
+
+    await expect(builder.inspectTarget("test/board")).rejects.toThrow(
+      "missing quantum, requirements.txt, requirements-dev.txt, lib/python/qmk/cli/__init__.py",
+    );
   });
 
   it("reports when the imported source ships a Vial keymap", async () => {
