@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-08-26
+
 ### Changed
 
 - Build against pinned [vial-qmk](https://github.com/vial-kb/vial-qmk) instead of upstream QMK, so firmware can be Vial-compatible
@@ -14,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Offer the board's Vial keymap when the imported source ships `keymaps/vial/vial.json`, compiling it natively instead of converting it to keymap.json
+- Draw the declared RGB LED map as a clickable strip under the preview so indicator LEDs can be picked visually
+- Let each RGB indicator channel use a chosen color instead of a hardcoded green or red
 
 ## [0.1.9] - 2026-08-26
 
@@ -80,7 +84,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Run QMK and Git with the QMK MSYS tool paths for default and custom installations
 
-[Unreleased]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.9...HEAD
+[Unreleased]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.10...HEAD
+[0.1.10]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.6...v0.1.7
