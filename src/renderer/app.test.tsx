@@ -110,6 +110,22 @@ const rgbMatrixTarget: TargetCapabilities = {
   ],
 };
 
+const splitAlternatesTarget: TargetCapabilities = {
+  target: "test/split-pad",
+  keyboardName: "Split Pad",
+  channels: [],
+  layouts: [
+    {
+      name: "LAYOUT_all",
+      keys: [
+        { row: 0, column: 0, x: 0, y: 0, width: 1, height: 1, label: "Esc" },
+        { row: 0, column: 1, x: 0, y: 0, width: 2, height: 1, label: "Esc 2U" },
+        { row: 0, column: 2, x: 2, y: 0, width: 1, height: 1, label: "F1" },
+      ],
+    },
+  ],
+};
+
 class InMemoryKeyflareApi implements KeyflareApi {
   readonly builds: BuildAndSaveInput[] = [];
   readonly qmkMsysSelections: string[] = [];
@@ -372,6 +388,22 @@ describe("Keyflare", () => {
     ]);
   });
 
+  it("ghosts stacked layout alternates in the preview", async () => {
+    const api = new InMemoryKeyflareApi(
+      readyEnvironment,
+      splitAlternatesTarget,
+    );
+    const user = userEvent.setup();
+    render(<App api={api} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Choose keyboard folder" }),
+    );
+    await screen.findByText("Split Pad");
+
+    expect(document.querySelectorAll(".key")).toHaveLength(3);
+    expect(document.querySelectorAll(".key-alternate")).toHaveLength(1);
+  });
   it("requires a selected imported keymap before building", async () => {
     const api = new InMemoryKeyflareApi(readyEnvironment);
     const user = userEvent.setup();

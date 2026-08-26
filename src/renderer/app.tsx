@@ -660,40 +660,58 @@ function KeyboardPreview({
         role="img"
         aria-label={`${layout.name} key layout`}
       >
-        {layout.keys.map((key, index) => {
-          const x = key.x * unit + gap / 2;
-          const y = key.y * unit + gap / 2;
-          const keyWidth = key.width * unit - gap;
-          const keyHeight = key.height * unit - gap;
-          const label = formatKeyLabel(key);
-          const selected =
-            backlightSelected ||
-            selectedIndicatorChannels.some((channel) =>
-              keycodeExpressionIncludesAny(
-                key.keycode,
-                logicalIndicatorKeycodes[channel]!,
-              ),
+        {(() => {
+          // LAYOUT_all-style metadata stacks split-key alternates on the same
+          // coordinates. Draw every key, but ghost any key overlapping one
+          // already drawn so the primary layout stays readable.
+          const drawn: { x0: number; y0: number; x1: number; y1: number }[] =
+            [];
+          return layout.keys.map((key, index) => {
+            const x = key.x * unit + gap / 2;
+            const y = key.y * unit + gap / 2;
+            const keyWidth = key.width * unit - gap;
+            const keyHeight = key.height * unit - gap;
+            const label = formatKeyLabel(key);
+            const selected =
+              backlightSelected ||
+              selectedIndicatorChannels.some((channel) =>
+                keycodeExpressionIncludesAny(
+                  key.keycode,
+                  logicalIndicatorKeycodes[channel]!,
+                ),
+              );
+            const alternate = drawn.some(
+              (r) =>
+                x < r.x1 - 0.01 &&
+                r.x0 < x + keyWidth - 0.01 &&
+                y < r.y1 - 0.01 &&
+                r.y0 < y + keyHeight - 0.01,
             );
-          return (
-            <g
-              className={selected ? "key selected-output-key" : "key"}
-              key={`${key.row}-${key.column}-${index}`}
-            >
-              {selected && <title>{`${label} selected output`}</title>}
-              <rect
-                className={`key-shape${selected ? " output-selected" : ""}`}
-                x={x}
-                y={y}
-                width={keyWidth}
-                height={keyHeight}
-                rx="5"
-              />
-              <text x={x + 8} y={y + keyHeight - 8}>
-                {label}
-              </text>
-            </g>
-          );
-        })}
+            drawn.push({ x0: x, y0: y, x1: x + keyWidth, y1: y + keyHeight });
+            const classes = ["key"];
+            if (alternate) classes.push("key-alternate");
+            if (selected) classes.push("selected-output-key");
+            return (
+              <g
+                className={classes.join(" ")}
+                key={`${key.row}-${key.column}-${index}`}
+              >
+                {selected && <title>{`${label} selected output`}</title>}
+                <rect
+                  className={`key-shape${selected ? " output-selected" : ""}`}
+                  x={x}
+                  y={y}
+                  width={keyWidth}
+                  height={keyHeight}
+                  rx="5"
+                />
+                <text x={x + 8} y={y + keyHeight - 8}>
+                  {label}
+                </text>
+              </g>
+            );
+          });
+        })()}
       </svg>
       <p className="layout-caption">{layout.name}</p>
       {selectionDescriptions.length > 0 && (
