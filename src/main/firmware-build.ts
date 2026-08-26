@@ -266,11 +266,19 @@ function qmkMsysToolCommands({
     msystem === "UCRT64"
       ? "export PATH=/opt/qmk/bin:/opt/uv/tools/bin:/ucrt64/bin:/usr/local/bin:/usr/bin:/bin:$PATH; export QMK_DISTRIB_DIR=/opt/qmk; "
       : "";
+  // qmk_cli looks for a firmware checkout in three places, in this order: the
+  // working directory and its parents, `user.qmk_home` from the user's
+  // qmk.ini, then $QMK_HOME. Entering the managed checkout is therefore the
+  // only way to outrank a qmk.ini that points at the user's own clone. The
+  // launcher is native Windows Python, so $QMK_HOME must reach it as a Windows
+  // path; cygpath produces that value here instead of trusting MSYS2's
+  // implicit conversion, and MSYS2_ENV_CONV_EXCL keeps MSYS2 from rewriting
+  // what we chose.
   const qmkPrefix = [
     "--noprofile",
     "--norc",
     "-c",
-    `${setup}export MSYS2_ENV_CONV_EXCL=QMK_HOME; export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; if [ -n "$QMK_HOME" ]; then qmk_unix=$(cygpath -u "$QMK_HOME" 2>/dev/null || printf '%s' "$QMK_HOME"); cd "$qmk_unix" || exit 1; fi; exec qmk "$@"`,
+    `${setup}export MSYS2_ENV_CONV_EXCL=QMK_HOME; export SHELL=/usr/bin/bash; export PYTHONUTF8=1; export MAKE=make; if [ -n "$QMK_HOME" ]; then qmk_unix=$(cygpath -u "$QMK_HOME" 2>/dev/null || printf '%s' "$QMK_HOME"); cd "$qmk_unix" || exit 1; QMK_HOME=$(cygpath -w "$qmk_unix" 2>/dev/null || printf '%s' "$QMK_HOME"); export QMK_HOME; fi; exec qmk "$@"`,
     "keyflare-qmk",
   ];
   const gitPrefix = [
@@ -392,7 +400,7 @@ export class FirmwareBuildModule {
     this.toolCommandResolver = toolCommandResolver;
   }
 
-  private runTool(
+  private async runTool(
     toolName: keyof ToolCommands,
     request: Omit<CommandRequest, "command" | "args"> & { args: string[] },
   ): Promise<CommandResult> {
@@ -420,7 +428,25 @@ export class FirmwareBuildModule {
           : {}),
       };
     }
-    return this.commandRunner.run(commandRequest);
+    try {
+      return await this.commandRunner.run(commandRequest);
+    } catch (error) {
+      throw pinManagedHome ? await this.explainStubQmkCli(error) : error;
+    }
+  }
+
+  // The QMK launcher answers with an argparse error when it did not recognise
+  // the checkout it found. That message names the command it rejected but not
+  // the reason, so replace it with the files that failed the check.
+  private async explainStubQmkCli(error: unknown): Promise<unknown> {
+    const message = getErrorMessage(error);
+    if (!message.includes("invalid choice")) return error;
+    const missing = await findMissingFirmwareMarkers(this.qmkHome);
+    return new Error(
+      missing.length > 0
+        ? `${message}\n\nQMK did not load its build commands because ${this.qmkHome} is missing ${missing.join(", ")}. Download the QMK source again.`
+        : `${message}\n\nQMK did not load its build commands from ${this.qmkHome}, although that checkout is complete.`,
+    );
   }
 
   validateQmkMsysRoot(root: string): string {
@@ -481,6 +507,21 @@ export class FirmwareBuildModule {
           canSelectQmkMsysRoot: this.platform === "win32",
           summary: "Update Keyflare's pinned QMK source",
           details: `Expected ${qmkFirmwareRef.slice(0, 12)}, found ${currentRevision.slice(0, 12)}.`,
+          qmkHome: this.qmkHome,
+          qmkRef: qmkFirmwareRef,
+        };
+      }
+
+      // Matching HEAD only proves which commit was requested. A checkout that
+      // stopped early keeps that HEAD, and QMK would then silently fall back
+      // to the user's own clone or to its five built-in commands.
+      const missingMarkers = await findMissingFirmwareMarkers(this.qmkHome);
+      if (missingMarkers.length > 0) {
+        return {
+          kind: "source-required",
+          canSelectQmkMsysRoot: this.platform === "win32",
+          summary: "Download Keyflare's QMK source again",
+          details: `${this.qmkHome} is missing ${missingMarkers.join(", ")}. QMK only offers its build commands from a complete checkout.`,
           qmkHome: this.qmkHome,
           qmkRef: qmkFirmwareRef,
         };
@@ -562,10 +603,24 @@ export class FirmwareBuildModule {
       ],
       cwd: this.qmkHome,
     });
+    // Without --force, a checkout that already sits on this commit leaves any
+    // missing tracked file missing, so downloading again could never repair a
+    // truncated checkout. The imported keyboards are untracked and sit outside
+    // the sparse patterns, so --force does not touch them.
     await this.runTool("git", {
-      args: ["checkout", "--detach", qmkFirmwareRef],
+      args: ["checkout", "--detach", "--force", qmkFirmwareRef],
       cwd: this.qmkHome,
     });
+
+    // git-submodule is one of the firmware's own subcommands, so the checkout
+    // has to satisfy QMK's firmware check before it can run. Report the files
+    // the checkout is missing rather than letting QMK reject the command.
+    const missingMarkers = await findMissingFirmwareMarkers(this.qmkHome);
+    if (missingMarkers.length > 0) {
+      throw new Error(
+        `The QMK checkout in ${this.qmkHome} is missing ${missingMarkers.join(", ")}. Delete that folder and download the source again.`,
+      );
+    }
 
     await this.runTool("qmk", {
       args: ["git-submodule", "--sync"],
@@ -1207,6 +1262,27 @@ const managedQmkCommands = new Set([
   "c2json",
   "git-submodule",
 ]);
+
+// qmk_cli only adds the firmware's own subcommands - the ones above - after
+// its is_qmk_firmware() check accepts a checkout. Every one of these files
+// must be present or the launcher keeps its five built-in commands and
+// argparse rejects `info` as an invalid choice. Keep in sync with
+// qmk_cli/helpers.py:is_qmk_firmware.
+const qmkFirmwareMarkers = [
+  "quantum",
+  "requirements.txt",
+  "requirements-dev.txt",
+  "lib/python/qmk/cli/__init__.py",
+];
+
+async function findMissingFirmwareMarkers(qmkHome: string): Promise<string[]> {
+  const found = await Promise.all(
+    qmkFirmwareMarkers.map(async (marker) =>
+      (await pathExists(join(qmkHome, ...marker.split("/")))) ? null : marker,
+    ),
+  );
+  return found.filter((marker): marker is string => marker !== null);
+}
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
