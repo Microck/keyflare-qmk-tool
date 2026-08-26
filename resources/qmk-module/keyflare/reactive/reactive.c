@@ -3,7 +3,7 @@
 
 #include QMK_KEYBOARD_H
 
-ASSERT_COMMUNITY_MODULES_MIN_API_VERSION(1, 0, 0);
+ASSERT_COMMUNITY_MODULES_MIN_API_VERSION(1, 1, 0);
 
 #ifndef LED_PIN_ON_STATE
 #    define LED_PIN_ON_STATE 1
@@ -114,3 +114,29 @@ bool shutdown_reactive(bool jump_to_bootloader) {
     keyflare_apply_reactive_state(false);
     return shutdown_reactive_kb(jump_to_bootloader);
 }
+
+#if defined(KEYFLARE_REACTIVE_CAPS_LOCK_RGB) || defined(KEYFLARE_REACTIVE_SCROLL_LOCK_RGB)
+// Runs after the effect render each frame, so the indicator survives the
+// reactive overlay. Colors only show while RGB Matrix is enabled; the
+// indicator never force-enables it.
+bool rgb_matrix_indicators_reactive(void) {
+    led_t const host_state = host_keyboard_led_state();
+#    ifdef KEYFLARE_REACTIVE_CAPS_LOCK_RGB
+    rgb_matrix_set_color(
+        KEYFLARE_REACTIVE_CAPS_LOCK_RGB_LED,
+        host_state.caps_lock ? 255 : 0,
+        0,
+        0
+    );
+#    endif
+#    ifdef KEYFLARE_REACTIVE_SCROLL_LOCK_RGB
+    rgb_matrix_set_color(
+        KEYFLARE_REACTIVE_SCROLL_LOCK_RGB_LED,
+        0,
+        host_state.scroll_lock ? 255 : 0,
+        0
+    );
+#    endif
+    return true;
+}
+#endif

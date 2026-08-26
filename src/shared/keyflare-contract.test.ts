@@ -128,6 +128,16 @@ describe("normalizeQmkInfo", () => {
       }).channels,
     ).toEqual([
       { id: "rgb_matrix", kind: "rgb", label: "RGB Matrix reactive" },
+      {
+        id: "caps_lock",
+        kind: "rgb-indicator",
+        label: "Caps Lock indicator (RGB)",
+      },
+      {
+        id: "scroll_lock",
+        kind: "rgb-indicator",
+        label: "Scroll Lock indicator (RGB)",
+      },
     ]);
     expect(
       normalizeQmkInfo({
@@ -141,6 +151,16 @@ describe("normalizeQmkInfo", () => {
       }).channels,
     ).toEqual([
       { id: "rgb_matrix", kind: "rgb", label: "RGB Matrix reactive" },
+      {
+        id: "caps_lock",
+        kind: "rgb-indicator",
+        label: "Caps Lock indicator (RGB)",
+      },
+      {
+        id: "scroll_lock",
+        kind: "rgb-indicator",
+        label: "Scroll Lock indicator (RGB)",
+      },
     ]);
     expect(
       normalizeQmkInfo({

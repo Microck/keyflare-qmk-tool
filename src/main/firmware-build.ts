@@ -20,6 +20,7 @@ import {
   channelIdSchema,
   normalizeQmkInfo,
   type ChannelId,
+  type DeclaredChannel,
   type TargetCapabilities,
 } from "../shared/keyflare-contract";
 import type {
@@ -47,6 +48,13 @@ const keymapSchema = z
 const buildRequestSchema = z.object({
   target: z.string().min(1),
   channels: z.array(channelIdSchema).min(1),
+  indicatorLeds: z
+    .object({
+      caps_lock: z.number().int().min(0),
+      scroll_lock: z.number().int().min(0),
+    })
+    .partial()
+    .optional(),
   keymap: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("default") }),
     z.object({ kind: z.literal("file"), path: z.string().min(1) }),
@@ -650,19 +658,39 @@ export class FirmwareBuildModule {
     let workDirectory: string | undefined;
     let qmkBuildDirectory: string | undefined;
     let qmkRootArtifactPath: string | undefined;
-
     try {
       await mkdir(this.workRoot, { recursive: true });
       workDirectory = await mkdtemp(join(this.workRoot, "build-"));
       const capabilities = await this.inspectTarget(request.target);
       assertDeclaredSelection({ capabilities, channels: request.channels });
+      const selectedChannels = request.channels.map(
+        (id) =>
+          capabilities.channels.find((channel) => channel.id === id) ?? {
+            id,
+            kind: "indicator" as const,
+            label: id,
+          },
+      );
+      for (const channel of selectedChannels) {
+        if (channel.kind !== "rgb-indicator") continue;
+        const led =
+          request.indicatorLeds?.[channel.id as "caps_lock" | "scroll_lock"];
+        if (led === undefined) {
+          throw new Error(
+            `Select an indicator LED for ${channel.label} before building`,
+          );
+        }
+      }
       const source = await this.loadKeymap({
         target: request.target,
         keymap: request.keymap,
       });
       const keymap = prepareKeymapDocument({ source, target: request.target });
-      await this.prepareBuildUserspace(workDirectory, request.channels);
-
+      await this.prepareBuildUserspace(
+        workDirectory,
+        selectedChannels,
+        request.indicatorLeds,
+      );
       const buildKeymapName = `keyflare_${basename(workDirectory).replaceAll(/[^a-zA-Z0-9]/gu, "_")}`;
       qmkBuildDirectory = join(
         this.qmkHome,
@@ -778,7 +806,8 @@ export class FirmwareBuildModule {
 
   private async prepareBuildUserspace(
     workDirectory: string,
-    channels: ChannelId[],
+    channels: Array<Pick<DeclaredChannel, "id" | "kind">>,
+    indicatorLeds?: BuildRequest["indicatorLeds"],
   ): Promise<void> {
     const destination = join(workDirectory, "modules", "keyflare", "reactive");
     await cp(this.moduleSourcePath, destination, { recursive: true });
@@ -790,7 +819,7 @@ export class FirmwareBuildModule {
       ),
       writeFile(
         join(destination, "config.h"),
-        renderReactiveModuleConfig({ channels }),
+        renderReactiveModuleConfig({ channels, indicatorLeds }),
         "utf8",
       ),
     ]);

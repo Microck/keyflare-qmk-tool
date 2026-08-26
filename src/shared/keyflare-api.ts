@@ -23,6 +23,13 @@ export const keyboardSourceSelectionSchema = z
 export const buildAndSaveInputSchema = z.object({
   target: z.string().min(1),
   channels: z.array(channelIdSchema).min(1),
+  indicatorLeds: z
+    .object({
+      caps_lock: z.number().int().min(0),
+      scroll_lock: z.number().int().min(0),
+    })
+    .partial()
+    .optional(),
   keymap: z.enum(["default", "imported"]),
 });
 

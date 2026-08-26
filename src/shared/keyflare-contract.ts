@@ -15,7 +15,7 @@ export type ChannelId = z.infer<typeof channelIdSchema>;
 
 export interface DeclaredChannel {
   id: ChannelId;
-  kind: "backlight" | "rgb" | "indicator";
+  kind: "backlight" | "rgb" | "indicator" | "rgb-indicator";
   label: string;
 }
 
@@ -40,6 +40,12 @@ export interface TargetCapabilities {
   keyboardName: string;
   channels: DeclaredChannel[];
   layouts: KeyboardLayout[];
+
+  /**
+   * Declared RGB Matrix LED positions, present only when the target exposes
+   * the RGB Matrix channel. Drives the RGB indicator LED picker.
+   */
+  rgbLeds?: { x: number; y: number }[];
 }
 
 const pinSchema = z.string().min(1);
@@ -176,6 +182,7 @@ export function normalizeQmkInfo({
   const hasRgbMatrixDriver = Boolean(
     parsed.data.rgb_matrix?.driver ?? parsed.data.ws2812?.pin,
   );
+  let rgbMatrixLeds: { x: number; y: number }[] | undefined;
   if (parsed.data.features?.rgb_matrix === true && hasRgbMatrixDriver) {
     // QMK's data-driven build cannot address RGB Matrix LEDs without a LED
     // map, so a target without one would fail compilation with an obscure
@@ -194,11 +201,29 @@ export function normalizeQmkInfo({
       kind: "rgb",
       label: "RGB Matrix reactive",
     });
+    rgbMatrixLeds = (
+      parsed.data.rgb_matrix?.leds ??
+      parsed.data.rgb_matrix?.layout ??
+      []
+    ).map((led) => ({ x: led.x, y: led.y }));
   }
 
+  // Lock indicators normally need a dedicated LED pin. On targets that only
+  // have RGB Matrix, Caps and Scroll Lock can still be indicated by lighting
+  // a LED from the declared map, so fall back to an RGB indicator channel.
+  const rgbIndicatorFallback =
+    parsed.data.features?.rgb_matrix === true && hasRgbMatrixDriver;
   for (const [id, label] of indicatorDefinitions) {
+    if (id !== "caps_lock" && id !== "scroll_lock") {
+      if (parsed.data.indicators?.[id]) {
+        channels.push({ id, kind: "indicator", label });
+      }
+      continue;
+    }
     if (parsed.data.indicators?.[id]) {
       channels.push({ id, kind: "indicator", label });
+    } else if (rgbIndicatorFallback) {
+      channels.push({ id, kind: "rgb-indicator", label: `${label} (RGB)` });
     }
   }
 
@@ -206,6 +231,7 @@ export function normalizeQmkInfo({
     target,
     keyboardName: parsed.data.keyboard_name ?? target,
     channels,
+    ...(rgbMatrixLeds?.length ? { rgbLeds: rgbMatrixLeds } : {}),
     layouts: Object.entries(parsed.data.layouts).map(([name, layout]) => {
       const keymapLayout = parsedKeymap
         ? (parsed.data.layout_aliases?.[parsedKeymap.layout] ??

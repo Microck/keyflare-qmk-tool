@@ -110,6 +110,32 @@ const rgbMatrixTarget: TargetCapabilities = {
   ],
 };
 
+const rgbIndicatorTarget: TargetCapabilities = {
+  target: "test/rgb-indicator",
+  keyboardName: "RGB Indicator",
+  channels: [
+    { id: "rgb_matrix", kind: "rgb", label: "RGB Matrix reactive" },
+    {
+      id: "scroll_lock",
+      kind: "rgb-indicator",
+      label: "Scroll Lock indicator (RGB)",
+    },
+  ],
+  rgbLeds: [
+    { x: 0, y: 6 },
+    { x: 4, y: 6 },
+    { x: 8, y: 6 },
+  ],
+  layouts: [
+    {
+      name: "LAYOUT",
+      keys: [
+        { row: 0, column: 0, x: 0, y: 0, width: 1, height: 1, label: "A" },
+      ],
+    },
+  ],
+};
+
 const splitAlternatesTarget: TargetCapabilities = {
   target: "test/split-pad",
   keyboardName: "Split Pad",
@@ -403,6 +429,38 @@ describe("Keyflare", () => {
 
     expect(document.querySelectorAll(".key")).toHaveLength(3);
     expect(document.querySelectorAll(".key-alternate")).toHaveLength(1);
+  });
+
+  it("builds an rgb indicator with its chosen LED", async () => {
+    const api = new InMemoryKeyflareApi(readyEnvironment, rgbIndicatorTarget);
+    const user = userEvent.setup();
+    render(<App api={api} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Choose keyboard folder" }),
+    );
+    await screen.findByText("RGB Indicator");
+
+    await user.click(
+      screen.getByRole("checkbox", { name: "Scroll Lock indicator (RGB)" }),
+    );
+    const picker = screen.getByLabelText(
+      "Indicator LED for Scroll Lock indicator (RGB)",
+    );
+    await user.selectOptions(picker, "2");
+    expect(
+      screen.getByText("Scroll Lock indicator (RGB): LED #2"),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Build firmware" }));
+    expect(api.builds).toEqual([
+      {
+        target: "test/rgb-indicator",
+        channels: ["scroll_lock"],
+        indicatorLeds: { scroll_lock: 2 },
+        keymap: "default",
+      },
+    ]);
   });
   it("requires a selected imported keymap before building", async () => {
     const api = new InMemoryKeyflareApi(readyEnvironment);
