@@ -55,6 +55,13 @@ const buildRequestSchema = z.object({
     })
     .partial()
     .optional(),
+  indicatorColors: z
+    .object({
+      caps_lock: z.string().regex(/^#[0-9a-f]{6}$/iu),
+      scroll_lock: z.string().regex(/^#[0-9a-f]{6}$/iu),
+    })
+    .partial()
+    .optional(),
   keymap: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("default") }),
     z.object({ kind: z.literal("file"), path: z.string().min(1) }),
@@ -690,6 +697,7 @@ export class FirmwareBuildModule {
         workDirectory,
         selectedChannels,
         request.indicatorLeds,
+        request.indicatorColors,
       );
       const buildKeymapName = `keyflare_${basename(workDirectory).replaceAll(/[^a-zA-Z0-9]/gu, "_")}`;
       qmkBuildDirectory = join(
@@ -808,6 +816,7 @@ export class FirmwareBuildModule {
     workDirectory: string,
     channels: Array<Pick<DeclaredChannel, "id" | "kind">>,
     indicatorLeds?: BuildRequest["indicatorLeds"],
+    indicatorColors?: BuildRequest["indicatorColors"],
   ): Promise<void> {
     const destination = join(workDirectory, "modules", "keyflare", "reactive");
     await cp(this.moduleSourcePath, destination, { recursive: true });
@@ -819,7 +828,11 @@ export class FirmwareBuildModule {
       ),
       writeFile(
         join(destination, "config.h"),
-        renderReactiveModuleConfig({ channels, indicatorLeds }),
+        renderReactiveModuleConfig({
+          channels,
+          indicatorLeds,
+          indicatorColors,
+        }),
         "utf8",
       ),
     ]);

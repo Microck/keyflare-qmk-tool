@@ -17,12 +17,31 @@ const selectionSchema = z.object({
     )
     .min(1, "Select at least one declared channel"),
   indicatorLeds: z.record(z.string(), z.number().int().min(0)).optional(),
+  indicatorColors: z
+    .record(z.string(), z.string().regex(/^#[0-9a-f]{6}$/iu))
+    .optional(),
 });
+
+function parseHexColor(
+  value: string | undefined,
+  id: string,
+): { r: number; g: number; b: number } {
+  const hex = value ?? (id === "caps_lock" ? "#e5484d" : "#3fb950");
+  const match = /^#([0-9a-f]{6})$/iu.exec(hex);
+  if (!match) {
+    throw new Error(`Invalid indicator color for ${id}: ${hex}`);
+  }
+  const int = Number.parseInt(match[1]!, 16);
+  return { r: (int >> 16) & 0xff, g: (int >> 8) & 0xff, b: int & 0xff };
+}
 
 export function renderReactiveModuleConfig(input: {
   channels: Array<Pick<DeclaredChannel, "id" | "kind">>;
   indicatorLeds?:
     | { scroll_lock?: number | undefined; caps_lock?: number | undefined }
+    | undefined;
+  indicatorColors?:
+    | { scroll_lock?: string | undefined; caps_lock?: string | undefined }
     | undefined;
 }): string {
   const parsed = selectionSchema.safeParse(input);
@@ -45,9 +64,16 @@ export function renderReactiveModuleConfig(input: {
         if (led === undefined) {
           throw new Error(`Select an indicator LED for ${id}`);
         }
+        const color = parseHexColor(
+          input.indicatorColors?.[id as "caps_lock" | "scroll_lock"],
+          id,
+        );
         return [
           `#define KEYFLARE_REACTIVE_${id.toUpperCase()}_RGB`,
           `#define KEYFLARE_REACTIVE_${id.toUpperCase()}_RGB_LED ${led}`,
+          `#define KEYFLARE_REACTIVE_${id.toUpperCase()}_RGB_COLOR_R ${color.r}`,
+          `#define KEYFLARE_REACTIVE_${id.toUpperCase()}_RGB_COLOR_G ${color.g}`,
+          `#define KEYFLARE_REACTIVE_${id.toUpperCase()}_RGB_COLOR_B ${color.b}`,
         ];
       }
       return [`#define KEYFLARE_REACTIVE_${id.toUpperCase()}`];

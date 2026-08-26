@@ -45,6 +45,9 @@ export function App({ api }: { api: KeyflareApi }) {
   const [indicatorLeds, setIndicatorLeds] = useState<
     Partial<Record<ChannelId, number>>
   >({});
+  const [indicatorColors, setIndicatorColors] = useState<
+    Partial<Record<ChannelId, string>>
+  >({ scroll_lock: "#3fb950", caps_lock: "#e5484d" });
   const [keymapMode, setKeymapMode] = useState<KeymapMode>("default");
   const [importedKeymapName, setImportedKeymapName] = useState<string | null>(
     null,
@@ -217,6 +220,7 @@ export function App({ api }: { api: KeyflareApi }) {
         target,
         channels,
         ...(Object.keys(indicatorLeds).length ? { indicatorLeds } : {}),
+        ...(Object.keys(indicatorColors).length ? { indicatorColors } : {}),
         keymap: keymapMode,
       });
       setNotice(formatSaveNotice(saved));
@@ -296,6 +300,25 @@ export function App({ api }: { api: KeyflareApi }) {
                 : []
             }
             indicatorLeds={indicatorLeds}
+            indicatorColors={indicatorColors}
+            rgbLeds={capabilities?.rgbLeds ?? []}
+            onSelectIndicatorLed={
+              capabilities
+                ? (ledIndex) =>
+                    setIndicatorLeds((current) => {
+                      const next = { ...current };
+                      for (const channel of capabilities.channels) {
+                        if (
+                          channel.kind === "rgb-indicator" &&
+                          channels.includes(channel.id)
+                        ) {
+                          next[channel.id] = ledIndex;
+                        }
+                      }
+                      return next;
+                    })
+                : undefined
+            }
           />
         </section>
 
@@ -450,6 +473,23 @@ export function App({ api }: { api: KeyflareApi }) {
                           <small>{channelDescription(channel)}</small>
                         </span>
                       </label>
+                      {channel.kind === "rgb-indicator" &&
+                        channels.includes(channel.id) && (
+                          <label className="indicator-led-row">
+                            <span>Indicator color</span>
+                            <input
+                              type="color"
+                              aria-label={`Indicator color for ${channel.label}`}
+                              value={indicatorColors[channel.id] ?? "#3fb950"}
+                              onChange={(event) =>
+                                setIndicatorColors((current) => ({
+                                  ...current,
+                                  [channel.id]: event.target.value,
+                                }))
+                              }
+                            />
+                          </label>
+                        )}
                       {channel.kind === "rgb-indicator" &&
                         channels.includes(channel.id) && (
                           <label className="indicator-led-row">
@@ -654,10 +694,16 @@ function KeyboardPreview({
   layout,
   channels,
   indicatorLeds,
+  indicatorColors = {},
+  rgbLeds = [],
+  onSelectIndicatorLed,
 }: {
   layout: KeyboardLayout | null;
   channels: Array<Pick<DeclaredChannel, "id" | "kind">>;
   indicatorLeds: Partial<Record<ChannelId, number>>;
+  indicatorColors?: Partial<Record<ChannelId, string>> | undefined;
+  rgbLeds?: { x: number; y: number }[];
+  onSelectIndicatorLed?: ((ledIndex: number) => void) | undefined;
 }) {
   if (!layout) {
     return (
@@ -673,7 +719,9 @@ function KeyboardPreview({
   const maxX = Math.max(...layout.keys.map((key) => key.x + key.width));
   const maxY = Math.max(...layout.keys.map((key) => key.y + key.height));
   const width = maxX * unit + gap;
-  const height = maxY * unit + gap;
+  const ledStripTop = maxY * unit + 10;
+  const ledStripHeight = rgbLeds.length > 0 ? 26 : 0;
+  const height = maxY * unit + gap + ledStripHeight;
   const backlightSelected = channels.some(
     (c) => c.id === "backlight" || c.id === "rgb_matrix",
   );
@@ -758,6 +806,48 @@ function KeyboardPreview({
             );
           });
         })()}
+        {rgbLeds.length > 0 &&
+          (() => {
+            // LED positions use whatever units the target declared, so
+            // normalize the strip into the preview width. Clicking a LED
+            // assigns it to every selected RGB indicator channel.
+            const xs = rgbLeds.map((led) => led.x);
+            const minX = Math.min(...xs);
+            const spanX = Math.max(Math.max(...xs) - minX, 1);
+            const cy = ledStripTop + ledStripHeight / 2;
+            const selectedRgbIndicators = channels.filter(
+              (channel) => channel.kind === "rgb-indicator",
+            );
+            return rgbLeds.map((led, index) => {
+              const cx = ((led.x - minX) / spanX) * (maxX * unit);
+              const chosenFor = selectedRgbIndicators.filter(
+                (channel) => (indicatorLeds[channel.id] ?? 0) === index,
+              );
+              const fill = chosenFor.some((c) => c.id === "scroll_lock")
+                ? (indicatorColors.scroll_lock ?? "#3fb950")
+                : chosenFor.some((c) => c.id === "caps_lock")
+                  ? (indicatorColors.caps_lock ?? "#e5484d")
+                  : "#5a5656";
+              return (
+                <circle
+                  key={`led-${index}`}
+                  className={
+                    chosenFor.length > 0 ? "led-dot led-dot-chosen" : "led-dot"
+                  }
+                  cx={cx}
+                  cy={cy}
+                  r={7}
+                  fill={fill}
+                  onClick={() => onSelectIndicatorLed?.(index)}
+                  style={
+                    onSelectIndicatorLed ? { cursor: "pointer" } : undefined
+                  }
+                >
+                  <title>{`LED ${index} (${led.x}, ${led.y})`}</title>
+                </circle>
+              );
+            });
+          })()}
       </svg>
       <p className="layout-caption">{layout.name}</p>
       {selectionDescriptions.length > 0 && (
