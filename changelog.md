@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Offer Caps Lock and Scroll Lock indicator channels on RGB Matrix targets without dedicated indicator pins: the host lock state lights an LED chosen from the target's declared LED map
+
 - Offer a reactive RGB Matrix channel for targets that declare the feature with a driver or WS2812 pin, running the typing heatmap effect while keys are held and restoring the saved effect without EEPROM writes
 
 ## [0.1.7] - 2026-08-11

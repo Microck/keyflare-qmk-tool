@@ -7,7 +7,12 @@ import { renderReactiveModuleConfig } from "./reactive-module";
 describe("renderReactiveModuleConfig", () => {
   it("generates only the selected declared channel flags", () => {
     expect(
-      renderReactiveModuleConfig({ channels: ["backlight", "scroll_lock"] }),
+      renderReactiveModuleConfig({
+        channels: [
+          { id: "backlight", kind: "backlight" },
+          { id: "scroll_lock", kind: "indicator" },
+        ],
+      }),
     ).toMatchInlineSnapshot(`
       "#pragma once
 
@@ -24,17 +29,54 @@ describe("renderReactiveModuleConfig", () => {
   });
 
   it("enables the typing heatmap effect for rgb_matrix builds", () => {
-    expect(renderReactiveModuleConfig({ channels: ["rgb_matrix"] }))
-      .toMatchInlineSnapshot(`
-        "#pragma once
+    expect(
+      renderReactiveModuleConfig({
+        channels: [{ id: "rgb_matrix", kind: "rgb" }],
+      }),
+    ).toMatchInlineSnapshot(`
+      "#pragma once
 
-        #define KEYFLARE_REACTIVE_RGB_MATRIX
+      #define KEYFLARE_REACTIVE_RGB_MATRIX
 
-        #ifdef KEYFLARE_REACTIVE_RGB_MATRIX
-        #    define ENABLE_RGB_MATRIX_TYPING_HEATMAP
-        #endif
-        "
-      `);
+      #ifdef KEYFLARE_REACTIVE_RGB_MATRIX
+      #    define ENABLE_RGB_MATRIX_TYPING_HEATMAP
+      #endif
+      "
+    `);
+  });
+
+  it("renders RGB indicator LED defines for rgb-indicator channels", () => {
+    expect(
+      renderReactiveModuleConfig({
+        channels: [
+          { id: "rgb_matrix", kind: "rgb" },
+          { id: "caps_lock", kind: "rgb-indicator" },
+          { id: "scroll_lock", kind: "rgb-indicator" },
+        ],
+        indicatorLeds: { scroll_lock: 3, caps_lock: 7 },
+      }),
+    ).toMatchInlineSnapshot(`
+      "#pragma once
+
+      #define KEYFLARE_REACTIVE_RGB_MATRIX
+      #define KEYFLARE_REACTIVE_CAPS_LOCK_RGB
+      #define KEYFLARE_REACTIVE_CAPS_LOCK_RGB_LED 7
+      #define KEYFLARE_REACTIVE_SCROLL_LOCK_RGB
+      #define KEYFLARE_REACTIVE_SCROLL_LOCK_RGB_LED 3
+
+      #ifdef KEYFLARE_REACTIVE_RGB_MATRIX
+      #    define ENABLE_RGB_MATRIX_TYPING_HEATMAP
+      #endif
+      "
+    `);
+  });
+
+  it("requires an indicator LED for rgb-indicator channels", () => {
+    expect(() =>
+      renderReactiveModuleConfig({
+        channels: [{ id: "scroll_lock", kind: "rgb-indicator" }],
+      }),
+    ).toThrow("Select an indicator LED for scroll_lock");
   });
 
   it("does not define the indicator helper in backlight-only builds", async () => {

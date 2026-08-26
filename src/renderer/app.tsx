@@ -23,6 +23,7 @@ import type {
 } from "../shared/keyflare-api";
 import type {
   ChannelId,
+  DeclaredChannel,
   KeyboardLayout,
   TargetCapabilities,
 } from "../shared/keyflare-contract";
@@ -41,6 +42,9 @@ export function App({ api }: { api: KeyflareApi }) {
     null,
   );
   const [channels, setChannels] = useState<ChannelId[]>([]);
+  const [indicatorLeds, setIndicatorLeds] = useState<
+    Partial<Record<ChannelId, number>>
+  >({});
   const [keymapMode, setKeymapMode] = useState<KeymapMode>("default");
   const [importedKeymapName, setImportedKeymapName] = useState<string | null>(
     null,
@@ -212,6 +216,7 @@ export function App({ api }: { api: KeyflareApi }) {
       const saved = await api.buildAndSave({
         target,
         channels,
+        ...(Object.keys(indicatorLeds).length ? { indicatorLeds } : {}),
         keymap: keymapMode,
       });
       setNotice(formatSaveNotice(saved));
@@ -281,7 +286,17 @@ export function App({ api }: { api: KeyflareApi }) {
               </label>
             )}
           </div>
-          <KeyboardPreview layout={selectedLayout} channels={channels} />
+          <KeyboardPreview
+            layout={selectedLayout}
+            channels={
+              selectedLayout && capabilities
+                ? capabilities.channels.filter((channel) =>
+                    channels.includes(channel.id),
+                  )
+                : []
+            }
+            indicatorLeds={indicatorLeds}
+          />
         </section>
 
         <section
@@ -418,23 +433,48 @@ export function App({ api }: { api: KeyflareApi }) {
                 </div>
               ) : (
                 <fieldset className="channel-list">
-                  <legend>Select outputs</legend>
                   {capabilities.channels.map((channel) => (
-                    <label className="channel-row" key={channel.id}>
-                      <input
-                        type="checkbox"
-                        aria-label={channel.label}
-                        checked={channels.includes(channel.id)}
-                        onChange={() => toggleChannel(channel.id)}
-                      />
-                      <span className="channel-mark">
-                        <Check aria-hidden="true" />
-                      </span>
-                      <span className="channel-copy">
-                        <strong>{channel.label}</strong>
-                        <small>{channelDescription(channel.id)}</small>
-                      </span>
-                    </label>
+                    <div className="channel-row-group" key={channel.id}>
+                      <label className="channel-row">
+                        <input
+                          type="checkbox"
+                          aria-label={channel.label}
+                          checked={channels.includes(channel.id)}
+                          onChange={() => toggleChannel(channel.id)}
+                        />
+                        <span className="channel-mark">
+                          <Check aria-hidden="true" />
+                        </span>
+                        <span className="channel-copy">
+                          <strong>{channel.label}</strong>
+                          <small>{channelDescription(channel)}</small>
+                        </span>
+                      </label>
+                      {channel.kind === "rgb-indicator" &&
+                        channels.includes(channel.id) && (
+                          <label className="indicator-led-row">
+                            <span>Indicator LED</span>
+                            <select
+                              aria-label={`Indicator LED for ${channel.label}`}
+                              value={indicatorLeds[channel.id] ?? 0}
+                              onChange={(event) =>
+                                setIndicatorLeds((current) => ({
+                                  ...current,
+                                  [channel.id]: Number(event.target.value),
+                                }))
+                              }
+                            >
+                              {(capabilities.rgbLeds ?? []).map(
+                                (led, index) => (
+                                  <option key={index} value={index}>
+                                    LED {index} ({led.x}, {led.y})
+                                  </option>
+                                ),
+                              )}
+                            </select>
+                          </label>
+                        )}
+                    </div>
                   ))}
                 </fieldset>
               )}
@@ -613,9 +653,11 @@ const logicalIndicatorLabels: Partial<Record<ChannelId, string>> = {
 function KeyboardPreview({
   layout,
   channels,
+  indicatorLeds,
 }: {
   layout: KeyboardLayout | null;
-  channels: ChannelId[];
+  channels: Array<Pick<DeclaredChannel, "id" | "kind">>;
+  indicatorLeds: Partial<Record<ChannelId, number>>;
 }) {
   if (!layout) {
     return (
@@ -632,25 +674,29 @@ function KeyboardPreview({
   const maxY = Math.max(...layout.keys.map((key) => key.y + key.height));
   const width = maxX * unit + gap;
   const height = maxY * unit + gap;
-  const backlightSelected =
-    channels.includes("backlight") || channels.includes("rgb_matrix");
+  const backlightSelected = channels.some(
+    (c) => c.id === "backlight" || c.id === "rgb_matrix",
+  );
   const selectedIndicatorChannels = channels.filter(
-    (channel) => logicalIndicatorKeycodes[channel],
+    (channel) => logicalIndicatorKeycodes[channel.id],
   );
   const selectionDescriptions = channels.map((channel) => {
-    if (channel === "backlight") return "Backlight: all keys";
-    if (channel === "rgb_matrix") return "RGB Matrix reactive: all LEDs";
-    const keycodes = logicalIndicatorKeycodes[channel];
-    const label = logicalIndicatorLabels[channel];
+    if (channel.id === "backlight") return "Backlight: all keys";
+    if (channel.id === "rgb_matrix") return "RGB Matrix reactive: all LEDs";
+    if (channel.kind === "rgb-indicator") {
+      return `${formatChannelLabel(channel.id)} (RGB): LED #${indicatorLeds[channel.id] ?? 0}`;
+    }
+    const keycodes = logicalIndicatorKeycodes[channel.id];
+    const label = logicalIndicatorLabels[channel.id];
     if (!keycodes || !label) {
-      return `${formatChannelLabel(channel)}: no logical key mapping`;
+      return `${formatChannelLabel(channel.id)}: no logical key mapping`;
     }
     const hasLogicalKey = layout.keys.some((key) =>
       keycodeExpressionIncludesAny(key.keycode, keycodes),
     );
     return hasLogicalKey
-      ? `${formatChannelLabel(channel)}: ${label} key`
-      : `${formatChannelLabel(channel)}: no matching key in default keymap`;
+      ? `${formatChannelLabel(channel.id)}: ${label} key`
+      : `${formatChannelLabel(channel.id)}: no matching key in default keymap`;
   });
 
   return (
@@ -677,7 +723,7 @@ function KeyboardPreview({
               selectedIndicatorChannels.some((channel) =>
                 keycodeExpressionIncludesAny(
                   key.keycode,
-                  logicalIndicatorKeycodes[channel]!,
+                  logicalIndicatorKeycodes[channel.id]!,
                 ),
               );
             const alternate = drawn.some(
@@ -721,7 +767,7 @@ function KeyboardPreview({
               <Check aria-hidden="true" /> {description}
             </span>
           ))}
-          {channels.some((channel) => channel !== "rgb_matrix") && (
+          {channels.some((channel) => channel.id !== "rgb_matrix") && (
             <small>
               Logical key preview only. The hardware pin controls the LED.
             </small>
@@ -774,11 +820,13 @@ function formatChannelLabel(channel: ChannelId): string {
     .join(" ")} indicator`;
 }
 
-function channelDescription(channel: ChannelId): string {
-  if (channel === "backlight") return "All keyboard backlight LEDs";
-  if (channel === "rgb_matrix")
+function channelDescription(channel: DeclaredChannel): string {
+  if (channel.id === "backlight") return "All keyboard backlight LEDs";
+  if (channel.id === "rgb_matrix")
     return "Reactive RGB Matrix effect while keys are held";
-  return `Dedicated ${formatChannelLabel(channel)} pin`;
+  if (channel.kind === "rgb-indicator")
+    return `Host ${formatChannelLabel(channel.id)} state on a chosen RGB Matrix LED`;
+  return `Dedicated ${formatChannelLabel(channel.id)} pin`;
 }
 
 function formatTargetVariant(target: string): string {
