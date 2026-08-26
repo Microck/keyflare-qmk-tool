@@ -289,6 +289,45 @@ describe("FirmwareBuildModule source setup", () => {
       cwd: builder.qmkHome,
     });
   });
+
+  it("asks to update a stale checkout without running doctor", async () => {
+    const appDataPath = await mkdtemp(join(tmpdir(), "keyflare-stale-"));
+    temporaryDirectories.push(appDataPath);
+    const runner = new RecordingCommandRunner();
+    const builder = new FirmwareBuildModule({
+      appDataPath,
+      moduleSourcePath: "/unused-in-this-test",
+      commandRunner: runner,
+    });
+    await mkdir(join(builder.qmkHome, ".git"), { recursive: true });
+
+    await expect(builder.inspectEnvironment()).resolves.toMatchObject({
+      kind: "source-required",
+    });
+    expect(runner.requests.some(({ args }) => args[0] === "doctor")).toBe(
+      false,
+    );
+  });
+
+  it("does not pin QMK_HOME for doctor after the checkout matches", async () => {
+    const appDataPath = await mkdtemp(join(tmpdir(), "keyflare-doctor-"));
+    temporaryDirectories.push(appDataPath);
+    const runner = new RecordingCommandRunner();
+    runner.stdoutFor = (request) =>
+      request.args[0] === "rev-parse" ? qmkFirmwareRef : "";
+    const builder = new FirmwareBuildModule({
+      appDataPath,
+      moduleSourcePath: "/unused-in-this-test",
+      commandRunner: runner,
+    });
+    await mkdir(join(builder.qmkHome, ".git"), { recursive: true });
+
+    await expect(builder.inspectEnvironment()).resolves.toMatchObject({
+      kind: "ready",
+    });
+    const doctor = runner.requests.find(({ args }) => args[0] === "doctor");
+    expect(doctor?.env?.QMK_HOME).toBeUndefined();
+  });
 });
 
 describe("FirmwareBuildModule keyboard source import", () => {
@@ -811,10 +850,11 @@ describe("FirmwareBuildModule builds", () => {
 
 class RecordingCommandRunner implements CommandRunner {
   readonly requests: CommandRequest[] = [];
+  stdoutFor?: (request: CommandRequest) => string;
 
   async run(request: CommandRequest): Promise<CommandResult> {
     this.requests.push(request);
-    return { stdout: "", stderr: "" };
+    return { stdout: this.stdoutFor?.(request) ?? "", stderr: "" };
   }
 }
 
