@@ -35,10 +35,43 @@ async function writeFirmwareCheckout(qmkHome: string): Promise<void> {
     recursive: true,
   });
   await mkdir(join(qmkHome, "quantum"), { recursive: true });
+  await mkdir(join(qmkHome, "lib", "chibios"), { recursive: true });
+  await mkdir(join(qmkHome, "lib", "chibios-contrib"), { recursive: true });
+  await mkdir(
+    join(
+      qmkHome,
+      "lib",
+      "chibios",
+      "os",
+      "common",
+      "startup",
+      "ARMCMx",
+      "compilers",
+      "GCC",
+      "mk",
+    ),
+    { recursive: true },
+  );
   await Promise.all([
     writeFile(join(qmkHome, "requirements.txt"), ""),
     writeFile(join(qmkHome, "requirements-dev.txt"), ""),
     writeFile(join(qmkHome, "lib", "python", "qmk", "cli", "__init__.py"), ""),
+    writeFile(
+      join(
+        qmkHome,
+        "lib",
+        "chibios",
+        "os",
+        "common",
+        "startup",
+        "ARMCMx",
+        "compilers",
+        "GCC",
+        "mk",
+        "startup_rp2040.mk",
+      ),
+      "",
+    ),
   ]);
 }
 
@@ -311,7 +344,7 @@ describe("FirmwareBuildModule source setup", () => {
     });
     expect(runner.requests.at(-1)).toMatchObject({
       command: "qmk",
-      args: ["git-submodule"],
+      args: ["git-submodule", "-f"],
       cwd: builder.qmkHome,
     });
   });
