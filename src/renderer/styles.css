@@ -166,7 +166,7 @@ summary:focus-visible {
   display: grid;
   min-height: 0;
   grid-template-rows: auto minmax(0, 1fr);
-  padding: 20px 28px 14px;
+  padding: 20px 20px 10px;
   overflow: hidden;
 }
 
@@ -220,15 +220,25 @@ summary:focus-visible {
 
 .keyboard-stage {
   position: relative;
+  display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px 40px 0;
+  gap: 8px;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px 8px;
+  overflow: visible;
 }
 
 .keyboard-stage svg {
-  width: min(100%, 1080px);
-  max-height: calc(100% - 22px);
+  width: 100%;
+  max-width: 1080px;
+  height: auto;
+  max-height: 100%;
+  flex: 0 1 auto;
+  min-height: 0;
   overflow: visible;
+  display: block;
   filter: drop-shadow(0 14px 18px rgb(0 0 0 / 28%));
 }
 
@@ -247,12 +257,12 @@ summary:focus-visible {
 .key-alternate {
   opacity: 0.38;
 }
-
 .keyboard-stage text {
   fill: var(--accent);
-  font-size: 8px;
-  font-weight: 500;
+  font-size: 8.5px;
+  font-weight: 600;
   pointer-events: none;
+  paint-order: stroke;
 }
 
 .selected-output-key text {
