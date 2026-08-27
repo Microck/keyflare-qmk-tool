@@ -12,6 +12,10 @@
   </p>
 </div>
 
+<p align="center">
+  <img src="build/keyflare-screenshot.jpg" alt="Keyflare configuration window" width="1180" />
+</p>
+
 choose your QMK keyboard source folder, keep its default keymap or import your own `keymap.json`, select the lighting channels QMK actually declares, and save a firmware file for your normal flashing tool.
 
 keyflare never guesses where LEDs are installed. if QMK only declares a Scroll Lock indicator, Scroll Lock is the only channel you can select. the physical LED decides the color.
