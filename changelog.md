@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.21] - 2026-08-27
+
+### Fixed
+
+- Switch reactive RGB Matrix from typing heatmap to solid reactive simple so first key press triggers immediately and flash is obvious (heatmap only recorded when mode already heatmap)
+
 ## [0.1.20] - 2026-08-27
 
 ### Fixed
@@ -148,9 +154,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Run QMK and Git with the QMK MSYS tool paths for default and custom installations
 
-[Unreleased]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.20...HEAD
+[Unreleased]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.21...HEAD
+[0.1.21]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.20...v0.1.21
 [0.1.20]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.19...v0.1.20
-[0.1.19]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.18...v0.1.19
 [0.1.18]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.17...v0.1.18
 [0.1.17]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.16...v0.1.17
 [0.1.16]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.15...v0.1.16

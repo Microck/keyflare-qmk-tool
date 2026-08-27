@@ -80,14 +80,18 @@ export function renderReactiveModuleConfig(input: {
   // QMK compiles RGB Matrix effects only when their ENABLE_ flag is defined
   // before the config chain closes. The module config.h is part of that
   // chain, so selecting the channel guarantees the reactive effect exists.
-  // Typing heatmap is a framebuffer effect, so the framebuffer has to be
-  // enabled as well or QMK builds the firmware without the effect.
+  // SOLID_REACTIVE_SIMPLE is a keyreactive effect, so the hit tracker has
+  // to be enabled. Typing heatmap is framebuffer-based and only records
+  // heat when the mode is already heatmap, which caused the first press
+  // while switching modes to appear black. Solid reactive records hits
+  // regardless of current mode and is much more obvious as a flash.
   const rgbEffect = selected.has("rgb_matrix")
     ? [
         "",
         "#ifdef KEYFLARE_REACTIVE_RGB_MATRIX",
-        "#    define ENABLE_RGB_MATRIX_FRAMEBUFFER_EFFECTS",
-        "#    define ENABLE_RGB_MATRIX_TYPING_HEATMAP",
+        "#    define RGB_MATRIX_KEYREACTIVE_ENABLED",
+        "#    define ENABLE_RGB_MATRIX_SOLID_REACTIVE_SIMPLE",
+        "#    define KEYFLARE_REACTIVE_RGB_MODE RGB_MATRIX_SOLID_REACTIVE_SIMPLE",
         "#endif",
       ]
     : [];
