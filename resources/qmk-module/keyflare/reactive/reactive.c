@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include QMK_KEYBOARD_H
+#include "color.h"
 
 ASSERT_COMMUNITY_MODULES_MIN_API_VERSION(1, 1, 0);
-
 #ifndef LED_PIN_ON_STATE
 #    define LED_PIN_ON_STATE 1
 #endif
@@ -21,6 +21,7 @@ static uint16_t keyflare_held_key_count;
 static bool keyflare_rgb_state_saved;
 static bool keyflare_saved_rgb_enabled;
 static uint8_t keyflare_saved_rgb_mode;
+static hsv_t keyflare_saved_hsv;
 #endif
 #if defined(KEYFLARE_REACTIVE_NUM_LOCK) || defined(KEYFLARE_REACTIVE_CAPS_LOCK) || defined(KEYFLARE_REACTIVE_SCROLL_LOCK) || defined(KEYFLARE_REACTIVE_COMPOSE) || defined(KEYFLARE_REACTIVE_KANA)
 static void keyflare_write_indicator(pin_t pin, bool enabled) {
@@ -32,23 +33,27 @@ static void keyflare_apply_reactive_state(bool active) {
 #ifdef KEYFLARE_REACTIVE_RGB_MATRIX
     // Drive RGB Matrix without EEPROM writes so the user's saved effect and
     // on/off state survive the temporary reactive window and power cycles.
+    // Use solid white while held so every key (even those with NO_LED in the
+    // matrix map) shows a visible flash. The previous heatmap/solid-reactive
+    // modes only lit LEDs that had a matrix mapping, so sam80s's sparse map
+    // made most keys appear dead.
+    // Idle is solid black (off appearance) but keeps RGB enabled so the
+    // scroll/caps RGB indicators still render white when their host LED is on.
     if (active) {
         keyflare_rgb_state_saved = true;
         keyflare_saved_rgb_enabled = rgb_matrix_is_enabled();
         keyflare_saved_rgb_mode = rgb_matrix_get_mode();
+        keyflare_saved_hsv = rgb_matrix_get_hsv();
         rgb_matrix_enable_noeeprom();
-        rgb_matrix_mode_noeeprom(KEYFLARE_REACTIVE_RGB_MODE);
+        rgb_matrix_sethsv_noeeprom(0, 0, 255);
+        rgb_matrix_mode_noeeprom(RGB_MATRIX_SOLID_COLOR);
     } else if (keyflare_rgb_state_saved) {
-        // QMK ignores mode changes while RGB is disabled, so restore the
-        // saved mode first and only then restore the saved on/off state.
-        rgb_matrix_mode_noeeprom(keyflare_saved_rgb_mode);
-        if (!keyflare_saved_rgb_enabled) {
-            rgb_matrix_disable_noeeprom();
-        }
+        rgb_matrix_enable_noeeprom();
+        rgb_matrix_sethsv_noeeprom(0, 0, 0);
+        rgb_matrix_mode_noeeprom(RGB_MATRIX_SOLID_COLOR);
         keyflare_rgb_state_saved = false;
     }
 #endif
-
 #ifdef KEYFLARE_REACTIVE_BACKLIGHT
     // Drive the hardware directly so a temporary reactive state never changes EEPROM.
     backlight_set(active ? BACKLIGHT_LEVELS : (is_backlight_enabled() ? get_backlight_level() : 0));
