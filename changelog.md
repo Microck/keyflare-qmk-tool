@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Update QMK submodules after checkout so RP2040 chibios-contrib is present (fixes startup_rp2040.mk missing error)
+
 ## [0.1.17] - 2026-08-27
 
 ### Fixed
