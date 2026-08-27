@@ -80,10 +80,13 @@ export function renderReactiveModuleConfig(input: {
   // QMK compiles RGB Matrix effects only when their ENABLE_ flag is defined
   // before the config chain closes. The module config.h is part of that
   // chain, so selecting the channel guarantees the reactive effect exists.
+  // Typing heatmap is a framebuffer effect, so the framebuffer has to be
+  // enabled as well or QMK builds the firmware without the effect.
   const rgbEffect = selected.has("rgb_matrix")
     ? [
         "",
         "#ifdef KEYFLARE_REACTIVE_RGB_MATRIX",
+        "#    define ENABLE_RGB_MATRIX_FRAMEBUFFER_EFFECTS",
         "#    define ENABLE_RGB_MATRIX_TYPING_HEATMAP",
         "#endif",
       ]

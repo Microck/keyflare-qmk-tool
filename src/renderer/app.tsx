@@ -507,7 +507,12 @@ export function App({ api }: { api: KeyflareApi }) {
                             <input
                               type="color"
                               aria-label={`Indicator color for ${channel.label}`}
-                              value={indicatorColors[channel.id] ?? "#3fb950"}
+                              value={
+                                indicatorColors[channel.id] ??
+                                (channel.id === "caps_lock"
+                                  ? "#e5484d"
+                                  : "#3fb950")
+                              }
                               onChange={(event) =>
                                 setIndicatorColors((current) => ({
                                   ...current,

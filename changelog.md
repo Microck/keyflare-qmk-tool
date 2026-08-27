@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.20] - 2026-08-27
+
+### Fixed
+
+- Enable RGB Matrix framebuffer effects for typing heatmap so reactive RGB Matrix actually compiles on targets without explicit framebuffer enable
+
 ## [0.1.19] - 2026-08-27
 
 ### Fixed
@@ -142,7 +148,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Run QMK and Git with the QMK MSYS tool paths for default and custom installations
 
-[Unreleased]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.19...HEAD
+[Unreleased]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.20...HEAD
+[0.1.20]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.19...v0.1.20
 [0.1.19]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.18...v0.1.19
 [0.1.18]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.17...v0.1.18
 [0.1.17]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.16...v0.1.17

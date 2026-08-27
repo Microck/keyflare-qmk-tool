@@ -39,6 +39,7 @@ describe("renderReactiveModuleConfig", () => {
       #define KEYFLARE_REACTIVE_RGB_MATRIX
 
       #ifdef KEYFLARE_REACTIVE_RGB_MATRIX
+      #    define ENABLE_RGB_MATRIX_FRAMEBUFFER_EFFECTS
       #    define ENABLE_RGB_MATRIX_TYPING_HEATMAP
       #endif
       "
@@ -71,6 +72,7 @@ describe("renderReactiveModuleConfig", () => {
       #define KEYFLARE_REACTIVE_SCROLL_LOCK_RGB_COLOR_B 80
 
       #ifdef KEYFLARE_REACTIVE_RGB_MATRIX
+      #    define ENABLE_RGB_MATRIX_FRAMEBUFFER_EFFECTS
       #    define ENABLE_RGB_MATRIX_TYPING_HEATMAP
       #endif
       "
