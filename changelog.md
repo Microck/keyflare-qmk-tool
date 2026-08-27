@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.17] - 2026-08-27
+
+### Fixed
+
+- Center key labels with textAnchor middle/dominantBaseline central to prevent cutoff
+- Size viewBox from primary keys only to avoid LAYOUT_all inflation causing horizontal misalignment
+- Enlarge LED strip to 34px with background panel, correct x-mapping, 9px hit-targets so strip is visible/clickable
+- Relax keyboard-stage sizing and workspace padding to prevent clipping
+- Default rgb-indicator LEDs to 0 in reactive-module, firmware-build, and UI so build is not blocked without explicit selection
+
 ## [0.1.16] - 2026-08-26
 
 ### Fixed
@@ -121,6 +131,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Run QMK and Git with the QMK MSYS tool paths for default and custom installations
 
 [Unreleased]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.16...HEAD
+[0.1.17]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.16...v0.1.17
 [0.1.16]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.15...v0.1.16
 [0.1.15]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.14...v0.1.15
 [0.1.14]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.13...v0.1.14
