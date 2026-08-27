@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.18] - 2026-08-27
+
+### Fixed
+
+- Update QMK submodules after checkout so RP2040 chibios-contrib is present (fixes startup_rp2040.mk missing error)
+
 ## [0.1.17] - 2026-08-27
 
 ### Fixed
@@ -131,6 +137,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Run QMK and Git with the QMK MSYS tool paths for default and custom installations
 
 [Unreleased]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.16...HEAD
+[0.1.18]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.17...v0.1.18
 [0.1.17]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.16...v0.1.17
 [0.1.16]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.15...v0.1.16
 [0.1.15]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.14...v0.1.15
