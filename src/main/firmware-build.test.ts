@@ -304,9 +304,14 @@ describe("FirmwareBuildModule source setup", () => {
       args: ["checkout", "--detach", "--force", qmkFirmwareRef],
       cwd: builder.qmkHome,
     });
-    expect(runner.requests.at(-1)).toMatchObject({
+    expect(runner.requests.at(-2)).toMatchObject({
       command: "qmk",
       args: ["git-submodule", "--sync"],
+      cwd: builder.qmkHome,
+    });
+    expect(runner.requests.at(-1)).toMatchObject({
+      command: "qmk",
+      args: ["git-submodule"],
       cwd: builder.qmkHome,
     });
   });

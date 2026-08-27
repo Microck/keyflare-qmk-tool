@@ -643,9 +643,12 @@ export class FirmwareBuildModule {
         );
       }
     }
-
     await this.runTool("qmk", {
       args: ["git-submodule", "--sync"],
+      cwd: this.qmkHome,
+    });
+    await this.runTool("qmk", {
+      args: ["git-submodule"],
       cwd: this.qmkHome,
     });
   }
