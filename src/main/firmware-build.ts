@@ -648,9 +648,34 @@ export class FirmwareBuildModule {
       cwd: this.qmkHome,
     });
     await this.runTool("qmk", {
-      args: ["git-submodule"],
+      args: ["git-submodule", "-f"],
       cwd: this.qmkHome,
     });
+  }
+  private async ensureSubmodules(): Promise<void> {
+    // RP2040 builds fail with missing startup_rp2040.mk when lib/chibios
+    // was not initialized after the sparse checkout. Detect that file and
+    // lazily run git-submodule so an existing checkout self-heals without
+    // requiring the user to click Download again.
+    const rp2040Startup = join(
+      this.qmkHome,
+      "lib",
+      "chibios",
+      "os",
+      "common",
+      "startup",
+      "ARMCMx",
+      "compilers",
+      "GCC",
+      "mk",
+      "startup_rp2040.mk",
+    );
+    if (await pathExists(rp2040Startup)) return;
+    // Only attempt to heal if qmk is available; otherwise the next compile
+    await this.runTool("qmk", {
+      args: ["git-submodule", "-f"],
+      cwd: this.qmkHome,
+    }).catch(() => undefined);
   }
 
   async importKeyboardSource(
@@ -796,6 +821,7 @@ export class FirmwareBuildModule {
       workDirectory = await mkdtemp(join(this.workRoot, "build-"));
       const capabilities = await this.inspectTarget(request.target);
       assertDeclaredSelection({ capabilities, channels: request.channels });
+      await this.ensureSubmodules();
       const selectedChannels = request.channels.map(
         (id) =>
           capabilities.channels.find((channel) => channel.id === id) ?? {
@@ -1301,6 +1327,8 @@ const qmkFirmwareMarkers = [
   "requirements.txt",
   "requirements-dev.txt",
   "lib/python/qmk/cli/__init__.py",
+  "lib/chibios",
+  "lib/chibios-contrib",
 ];
 
 async function findMissingFirmwareMarkers(qmkHome: string): Promise<string[]> {
