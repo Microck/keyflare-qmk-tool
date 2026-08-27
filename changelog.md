@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.22] - 2026-08-27
+
+### Fixed
+
+- Make reactive RGB flash solid white while held and solid black idle so sparse matrix boards (e.g. SAM80-S) show visible feedback on every key
+
 ## [0.1.21] - 2026-08-27
 
 ### Fixed
@@ -154,7 +160,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Run QMK and Git with the QMK MSYS tool paths for default and custom installations
 
-[Unreleased]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.21...HEAD
+[Unreleased]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.22...HEAD
+[0.1.22]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.21...v0.1.22
 [0.1.21]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.20...v0.1.21
 [0.1.20]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.19...v0.1.20
 [0.1.18]: https://github.com/Microck/keyflare-qmk-tool/compare/v0.1.17...v0.1.18
