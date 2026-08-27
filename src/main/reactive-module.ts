@@ -59,10 +59,8 @@ export function renderReactiveModuleConfig(input: {
       // RGB indicator channels light an LED from the declared map instead of
       // a dedicated pin, so they must not enable the pin-based helper.
       if (selected.get(id) === "rgb-indicator") {
-        const led = input.indicatorLeds?.[id as "caps_lock" | "scroll_lock"];
-        if (led === undefined) {
-          throw new Error(`Select an indicator LED for ${id}`);
-        }
+        const led =
+          input.indicatorLeds?.[id as "caps_lock" | "scroll_lock"] ?? 0;
         const color = parseHexColor(
           input.indicatorColors?.[id as "caps_lock" | "scroll_lock"],
           id,

@@ -217,10 +217,26 @@ export function App({ api }: { api: KeyflareApi }) {
     setError(null);
     setNotice(null);
     try {
+      const effectiveIndicatorLeds: Partial<Record<ChannelId, number>> = {
+        ...indicatorLeds,
+      };
+      for (const id of channels) {
+        const kind = capabilities.channels.find(
+          (entry) => entry.id === id,
+        )?.kind;
+        if (
+          kind === "rgb-indicator" &&
+          effectiveIndicatorLeds[id] === undefined
+        ) {
+          effectiveIndicatorLeds[id] = 0;
+        }
+      }
       const saved = await api.buildAndSave({
         target,
         channels,
-        ...(Object.keys(indicatorLeds).length ? { indicatorLeds } : {}),
+        ...(Object.keys(effectiveIndicatorLeds).length
+          ? { indicatorLeds: effectiveIndicatorLeds }
+          : {}),
         ...(Object.keys(indicatorColors).length ? { indicatorColors } : {}),
         keymap: keymapMode,
       });
@@ -236,11 +252,21 @@ export function App({ api }: { api: KeyflareApi }) {
   }
 
   function toggleChannel(channel: ChannelId) {
+    const kind = capabilities?.channels.find(
+      (entry) => entry.id === channel,
+    )?.kind;
+    const willAdd = !channels.includes(channel);
     setChannels((current) =>
       current.includes(channel)
         ? current.filter((item) => item !== channel)
         : [...current, channel],
     );
+    if (willAdd && kind === "rgb-indicator") {
+      setIndicatorLeds((current) => {
+        if (current[channel] !== undefined) return current;
+        return { ...current, [channel]: 0 };
+      });
+    }
   }
 
   if (!environment) {
@@ -739,12 +765,34 @@ function KeyboardPreview({
 
   const unit = 52;
   const gap = 4;
-  const maxX = Math.max(...layout.keys.map((key) => key.x + key.width));
-  const maxY = Math.max(...layout.keys.map((key) => key.y + key.height));
+  // Ghosted alternates (LAYOUT_all) share coordinates with a 1U key but a
+  // wider alternate (e.g. 2U Esc) would inflate the bounding box. Size the
+  // viewBox from the primary layer only so the preview stays centered.
+  const drawnForBounds: { x0: number; y0: number; x1: number; y1: number }[] =
+    [];
+  const primaryKeys = layout.keys.filter((key) => {
+    const x = key.x * unit + gap / 2;
+    const y = key.y * unit + gap / 2;
+    const w = key.width * unit - gap;
+    const h = key.height * unit - gap;
+    const isAlternate = drawnForBounds.some(
+      (r) =>
+        x < r.x1 - 0.01 &&
+        r.x0 < x + w - 0.01 &&
+        y < r.y1 - 0.01 &&
+        r.y0 < y + h - 0.01,
+    );
+    drawnForBounds.push({ x0: x, y0: y, x1: x + w, y1: y + h });
+    return !isAlternate;
+  });
+  const boundsKeys = primaryKeys.length > 0 ? primaryKeys : layout.keys;
+  const maxX = Math.max(...boundsKeys.map((key) => key.x + key.width));
+  const maxY = Math.max(...boundsKeys.map((key) => key.y + key.height));
   const width = maxX * unit + gap;
-  const ledStripTop = maxY * unit + 10;
-  const ledStripHeight = rgbLeds.length > 0 ? 26 : 0;
-  const height = maxY * unit + gap + ledStripHeight;
+  const ledStripHeight = rgbLeds.length > 0 ? 34 : 0;
+  const ledStripGap = rgbLeds.length > 0 ? 16 : 0;
+  const ledStripTop = maxY * unit + ledStripGap;
+  const height = maxY * unit + gap + ledStripHeight + ledStripGap;
   const backlightSelected = channels.some(
     (c) => c.id === "backlight" || c.id === "rgb_matrix",
   );
@@ -822,7 +870,12 @@ function KeyboardPreview({
                   height={keyHeight}
                   rx="5"
                 />
-                <text x={x + 8} y={y + keyHeight - 8}>
+                <text
+                  x={x + keyWidth / 2}
+                  y={y + keyHeight / 2}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                >
                   {label}
                 </text>
               </g>
@@ -831,45 +884,76 @@ function KeyboardPreview({
         })()}
         {rgbLeds.length > 0 &&
           (() => {
-            // LED positions use whatever units the target declared, so
-            // normalize the strip into the preview width. Clicking a LED
-            // assigns it to every selected RGB indicator channel.
+            // Keep LED strip visible as a distinct row below the keys and make
+            // every LED hit-target large enough to click. Normalize x across
+            // the declared width so the strip spans the keyboard and y is
+            // constant — the map is a single strip, not per-key positions.
             const xs = rgbLeds.map((led) => led.x);
             const minX = Math.min(...xs);
             const spanX = Math.max(Math.max(...xs) - minX, 1);
+            const stripLeft = gap / 2;
+            const stripWidth = maxX * unit - gap;
             const cy = ledStripTop + ledStripHeight / 2;
             const selectedRgbIndicators = channels.filter(
               (channel) => channel.kind === "rgb-indicator",
             );
-            return rgbLeds.map((led, index) => {
-              const cx = ((led.x - minX) / spanX) * (maxX * unit);
-              const chosenFor = selectedRgbIndicators.filter(
-                (channel) => (indicatorLeds[channel.id] ?? 0) === index,
-              );
-              const fill = chosenFor.some((c) => c.id === "scroll_lock")
-                ? (indicatorColors.scroll_lock ?? "#3fb950")
-                : chosenFor.some((c) => c.id === "caps_lock")
-                  ? (indicatorColors.caps_lock ?? "#e5484d")
-                  : "#5a5656";
-              return (
-                <circle
-                  key={`led-${index}`}
-                  className={
-                    chosenFor.length > 0 ? "led-dot led-dot-chosen" : "led-dot"
-                  }
-                  cx={cx}
-                  cy={cy}
-                  r={7}
-                  fill={fill}
-                  onClick={() => onSelectIndicatorLed?.(index)}
-                  style={
-                    onSelectIndicatorLed ? { cursor: "pointer" } : undefined
-                  }
-                >
-                  <title>{`LED ${index} (${led.x}, ${led.y})`}</title>
-                </circle>
-              );
-            });
+            return (
+              <g className="led-strip" role="list" aria-label="RGB LEDs">
+                <rect
+                  x={stripLeft}
+                  y={ledStripTop}
+                  width={stripWidth}
+                  height={ledStripHeight}
+                  rx="8"
+                  fill="rgba(255,255,255,0.04)"
+                  stroke="rgba(255,255,255,0.06)"
+                />
+                {rgbLeds.map((led, index) => {
+                  const cx = stripLeft + ((led.x - minX) / spanX) * stripWidth;
+                  const chosenFor = selectedRgbIndicators.filter(
+                    (channel) => (indicatorLeds[channel.id] ?? 0) === index,
+                  );
+                  const fill = chosenFor.some((c) => c.id === "scroll_lock")
+                    ? (indicatorColors.scroll_lock ?? "#3fb950")
+                    : chosenFor.some((c) => c.id === "caps_lock")
+                      ? (indicatorColors.caps_lock ?? "#e5484d")
+                      : "#5a5656";
+                  const isChosen = chosenFor.length > 0;
+                  return (
+                    <g key={`led-${index}`} role="listitem">
+                      <circle
+                        className={
+                          isChosen ? "led-dot led-dot-chosen" : "led-dot"
+                        }
+                        cx={cx}
+                        cy={cy}
+                        r={9}
+                        fill={fill}
+                        onClick={() => onSelectIndicatorLed?.(index)}
+                        style={
+                          onSelectIndicatorLed
+                            ? { cursor: "pointer" }
+                            : undefined
+                        }
+                      >
+                        <title>{`LED ${index} (${led.x}, ${led.y})${isChosen ? " selected" : ""}`}</title>
+                      </circle>
+                      <text
+                        x={cx}
+                        y={cy}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fontSize="7"
+                        fill={isChosen ? "#fff" : "rgba(255,255,255,0.9)"}
+                        pointerEvents="none"
+                      >
+                        {index}
+                      </text>
+                    </g>
+                  );
+                })}
+              </g>
+            );
           })()}
       </svg>
       <p className="layout-caption">{layout.name}</p>

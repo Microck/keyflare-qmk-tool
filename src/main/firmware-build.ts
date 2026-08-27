@@ -615,11 +615,33 @@ export class FirmwareBuildModule {
     // git-submodule is one of the firmware's own subcommands, so the checkout
     // has to satisfy QMK's firmware check before it can run. Report the files
     // the checkout is missing rather than letting QMK reject the command.
-    const missingMarkers = await findMissingFirmwareMarkers(this.qmkHome);
+    let missingMarkers = await findMissingFirmwareMarkers(this.qmkHome);
     if (missingMarkers.length > 0) {
-      throw new Error(
-        `The QMK checkout in ${this.qmkHome} is missing ${missingMarkers.join(", ")}. Delete that folder and download the source again.`,
-      );
+      // A previous truncated checkout can leave the worktree with missing
+      // tracked files even after fetch+checkout --force, because sparse-checkout
+      // still hides them. Disable sparse, restore, then re-enable.
+      await this.runTool("git", {
+        args: ["sparse-checkout", "disable"],
+        cwd: this.qmkHome,
+      }).catch(() => undefined);
+      await this.runTool("git", {
+        args: ["checkout", "--force", qmkFirmwareRef],
+        cwd: this.qmkHome,
+      }).catch(() => undefined);
+      await this.runTool("git", {
+        args: ["sparse-checkout", "set", "--no-cone", "/*", "!/keyboards/"],
+        cwd: this.qmkHome,
+      }).catch(() => undefined);
+      await this.runTool("git", {
+        args: ["checkout", "--force", qmkFirmwareRef],
+        cwd: this.qmkHome,
+      }).catch(() => undefined);
+      missingMarkers = await findMissingFirmwareMarkers(this.qmkHome);
+      if (missingMarkers.length > 0) {
+        throw new Error(
+          `The QMK checkout in ${this.qmkHome} is missing ${missingMarkers.join(", ")}. Delete that folder and download the source again.`,
+        );
+      }
     }
 
     await this.runTool("qmk", {
@@ -779,20 +801,23 @@ export class FirmwareBuildModule {
             label: id,
           },
       );
+      const effectiveIndicatorLeds = {
+        ...request.indicatorLeds,
+      } as NonNullable<BuildRequest["indicatorLeds"]>;
       for (const channel of selectedChannels) {
         if (channel.kind !== "rgb-indicator") continue;
-        const led =
-          request.indicatorLeds?.[channel.id as "caps_lock" | "scroll_lock"];
-        if (led === undefined) {
-          throw new Error(
-            `Select an indicator LED for ${channel.label} before building`,
-          );
+        const key = channel.id as "caps_lock" | "scroll_lock";
+        if (effectiveIndicatorLeds[key] === undefined) {
+          effectiveIndicatorLeds[key] = 0;
         }
       }
+      const indicatorLedsForBuild = Object.keys(effectiveIndicatorLeds).length
+        ? effectiveIndicatorLeds
+        : undefined;
       await this.prepareBuildUserspace(
         workDirectory,
         selectedChannels,
-        request.indicatorLeds,
+        indicatorLedsForBuild,
         request.indicatorColors,
       );
       const compiled = await this.compileFirmware({

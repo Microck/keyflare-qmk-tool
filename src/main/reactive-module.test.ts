@@ -77,12 +77,12 @@ describe("renderReactiveModuleConfig", () => {
     `);
   });
 
-  it("requires an indicator LED for rgb-indicator channels", () => {
-    expect(() =>
+  it("defaults the indicator LED to 0 for rgb-indicator channels", () => {
+    expect(
       renderReactiveModuleConfig({
         channels: [{ id: "scroll_lock", kind: "rgb-indicator" }],
       }),
-    ).toThrow("Select an indicator LED for scroll_lock");
+    ).toContain("#define KEYFLARE_REACTIVE_SCROLL_LOCK_RGB_LED 0");
   });
 
   it("does not define the indicator helper in backlight-only builds", async () => {
